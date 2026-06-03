@@ -1,288 +1,281 @@
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
-% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
-\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
-    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+
+\newcommand{\sys}{LifelongSceneDB}
+
 \begin{document}
 
-\title{Conference Paper Title*\\
-{\footnotesize \textsuperscript{*}Note: Sub-titles are not captured in Xplore and
-should not be used}
-\thanks{Identify applicable funding agency here. If none, delete this.}
-}
+\title{LifelongSceneDB: A Probabilistic Bitemporal Scene-Graph Store for Embodied Agents}
 
-\author{\IEEEauthorblockN{1\textsuperscript{st} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
-\and
-\IEEEauthorblockN{2\textsuperscript{nd} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
-\and
-\IEEEauthorblockN{3\textsuperscript{rd} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
-\and
-\IEEEauthorblockN{4\textsuperscript{th} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
-\and
-\IEEEauthorblockN{5\textsuperscript{th} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
-\and
-\IEEEauthorblockN{6\textsuperscript{th} Given Name Surname}
-\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
-\textit{name of organization (of Aff.)}\\
-City, Country \\
-email address or ORCID}
-}
+\author{\IEEEauthorblockN{Anonymous Authors}
+\IEEEauthorblockA{Paper under submission}}
 
 \maketitle
 
 \begin{abstract}
-This document is a model and instructions for \LaTeX.
-This and the IEEEtran.cls file define the components of your paper [title, text, heads, etc.]. *CRITICAL: Do Not Use Symbols, Special Characters, Footnotes, 
-or Math in Paper Title or Abstract.
+Embodied agents operating in dynamic human environments require long-term memory to search for objects, resume interrupted tasks, restore previous states, collaborate with humans, and explain their decisions. Existing embodied memory systems typically rely on vector memories, 3D snapshots, or task-specific scene graphs, but lack database-level semantics for time, uncertainty, provenance, and hybrid querying. We present \sys, a memory database system that models noisy embodied observations as probabilistic bitemporal scene-graph facts. \sys maintains valid time and transaction time for object and relation facts, attaches confidence and provenance to each claim, and supports current, as-of, change, evidence, and task-oriented top-k queries. It further provides online maintenance mechanisms for conflicting and delayed observations, together with lightweight hybrid indexes for temporal, graph, spatial, confidence, and provenance predicates. We evaluate \sys on dynamic embodied memory workloads and downstream object-search and previous-state restoration tasks. The results will show whether database-level memory semantics improve query correctness under noisy and delayed observations, reduce query latency compared with scan-based baselines, and improve embodied task efficiency.
 \end{abstract}
 
 \begin{IEEEkeywords}
-component, formatting, style, styling, insert
+embodied AI, lifelong memory, temporal database, probabilistic data, scene graph, provenance, query processing
 \end{IEEEkeywords}
 
 \section{Introduction}
-This document is a model and instructions for \LaTeX.
-Please observe the conference page limits. 
 
-\section{Ease of Use}
+Embodied agents are increasingly expected to operate in long-horizon, dynamic human environments. In a household environment, a cup may be moved from a table to a sink by a human, a drawer may be opened and later closed, and a robot may resume a task after charging. To act efficiently, the agent must reason not only about the current camera view, but also about what it observed before, what has changed, which observations support a memory claim, and whether the current belief is reliable enough to act on.
 
-\subsection{Maintaining the Integrity of the Specifications}
+Recent embodied memory systems have shown that memory is essential for embodied question answering, navigation, exploration, and manipulation. OpenEQA evaluates whether embodied agents can answer open-vocabulary questions from episodic memory or active exploration~\cite{openeqa}. 3D-Mem and related snapshot-based memories store compact visual memories for embodied exploration and reasoning~\cite{yang20253dmem}. DynaMem maintains dynamic spatio-semantic memory for open-world mobile manipulation~\cite{yu2024dynamem}. GraphPad uses mutable scene graphs and navigation logs as inference-time structured memory for embodied agents~\cite{graphpad}. Long-horizon VLN work such as MGDM further demonstrates that memory is critical for multi-stage embodied navigation~\cite{song2025lhvln}.
 
-The IEEEtran class file is used to format your paper and style the text. All margins, 
-column widths, line spaces, and text fonts are prescribed; please do not 
-alter them. You may note peculiarities. For example, the head margin
-measures proportionately more than is customary. This measurement 
-and others are deliberate, using specifications that anticipate your paper 
-as one part of the entire proceedings, and not as an independent document. 
-Please do not revise any of the current designations.
+However, these systems usually treat memory as a task-specific module rather than as a database object with explicit query semantics. Vector or retrieval memories can find related frames, but they do not naturally distinguish the current state from a past state. Static scene graphs can represent object relations, but they collapse history and cannot answer when a relation changed. Dynamic embodied memories may update spatial representations, but they rarely provide database-level semantics for valid time, transaction time, uncertain facts, claim-level provenance, and hybrid temporal-graph-spatial-vector queries.
 
-\section{Prepare Your Paper Before Styling}
-Before you begin to format your paper, first write and save the content as a 
-separate text file. Complete all content and organizational editing before 
-formatting. Please note sections \ref{AA}--\ref{SCM} below for more information on 
-proofreading, spelling and grammar.
+This paper formulates \emph{lifelong embodied memory management} as a data engineering problem. The input is a stream of noisy, delayed, and potentially conflicting embodied observations. The output is a persistent memory database that supports robot-facing queries such as: where is the mug now, where was it before breakfast, what changed in the kitchen, which frames support this claim, and should the robot re-observe before acting? These queries are not merely diagnostic: they are used by embodied agents to reduce blind search, restore previous states, resume interrupted tasks, and avoid unsafe actions under uncertainty.
 
-Keep your text and graphic files separate until after the text has been 
-formatted and styled. Do not number text heads---{\LaTeX} will do that 
-for you.
+We propose \sys, a probabilistic bitemporal scene-graph store for embodied agents. \sys represents each object or relation claim as a fact with valid time, transaction time, confidence, and provenance. It ingests noisy observation streams, incrementally maintains object and relation facts, resolves conflicting evidence through confidence updates, and supports current, as-of, change, provenance, and task-oriented top-k queries. To make these queries efficient, \sys maintains lightweight hybrid indexes over object identities, temporal intervals, regions, confidence values, and provenance links.
 
-\subsection{Abbreviations and Acronyms}\label{AA}
-Define abbreviations and acronyms the first time they are used in the text, 
-even after they have been defined in the abstract. Abbreviations such as 
-IEEE, SI, MKS, CGS, ac, dc, and rms do not have to be defined. Do not use 
-abbreviations in the title or heads unless they are unavoidable.
-
-\subsection{Units}
+This work makes the following contributions:
 \begin{itemize}
-\item Use either SI (MKS) or CGS as primary units. (SI units are encouraged.) English units may be used as secondary units (in parentheses). An exception would be the use of English units as identifiers in trade, such as ``3.5-inch disk drive''.
-\item Avoid combining SI and CGS units, such as current in amperes and magnetic field in oersteds. This often leads to confusion because equations do not balance dimensionally. If you must use mixed units, clearly state the units for each quantity that you use in an equation.
-\item Do not mix complete spellings and abbreviations of units: ``Wb/m\textsuperscript{2}'' or ``webers per square meter'', not ``webers/m\textsuperscript{2}''. Spell out units when they appear in text: ``. . . a few henries'', not ``. . . a few H''.
-\item Use a zero before decimal points: ``0.25'', not ``.25''. Use ``cm\textsuperscript{3}'', not ``cc''.)
+    \item We formulate lifelong embodied memory management as a data engineering problem over noisy and delayed embodied observation streams.
+    \item We propose a probabilistic bitemporal scene-graph data model that represents dynamic world facts with valid time, transaction time, confidence, and provenance.
+    \item We design online maintenance rules for supporting observations, conflicting observations, fact expiration, and evidence tracking.
+    \item We provide robot-facing query interfaces and lightweight hybrid indexes for current, as-of, change, provenance, uncertain top-k, and task-oriented queries.
+    \item We design a dynamic embodied memory workload and evaluate \sys against vector memory, static scene graphs, latest-wins temporal memory, and ablated variants on both database-level queries and downstream embodied tasks.
 \end{itemize}
 
-\subsection{Equations}
-Number equations consecutively. To make your 
-equations more compact, you may use the solidus (~/~), the exp function, or 
-appropriate exponents. Italicize Roman symbols for quantities and variables, 
-but not Greek symbols. Use a long dash rather than a hyphen for a minus 
-sign. Punctuate equations with commas or periods when they are part of a 
-sentence, as in:
-\begin{equation}
-a+b=\gamma\label{eq}
-\end{equation}
+\section{Motivation}
 
-Be sure that the 
-symbols in your equation have been defined before or immediately following 
-the equation. Use ``\eqref{eq}'', not ``Eq.~\eqref{eq}'' or ``equation \eqref{eq}'', except at 
-the beginning of a sentence: ``Equation \eqref{eq} is . . .''
+\subsection{Why Embodied Agents Need Database Memory}
 
-\subsection{\LaTeX-Specific Advice}
+A long-term embodied memory database is useful only when past states support current tasks. We focus on four representative task families.
 
-Please use ``soft'' (e.g., \verb|\eqref{Eq}|) cross references instead
-of ``hard'' references (e.g., \verb|(1)|). That will make it possible
-to combine sections, add equations, or change the order of figures or
-citations without having to go through the file line by line.
+\textbf{Temporal object search.} A user may ask the agent to find ``the mug I used earlier.'' If the mug is no longer visible, the robot should query where it was last seen, whether it was later moved, and which location is currently most likely.
 
-Please don't use the \verb|{eqnarray}| equation environment. Use
-\verb|{align}| or \verb|{IEEEeqnarray}| instead. The \verb|{eqnarray}|
-environment leaves unsightly spaces around relation symbols.
+\textbf{Previous-state restoration.} A user may ask the robot to restore a kitchen to its state before breakfast. This requires as-of queries over the previous world state and change queries that identify objects moved after the target time.
 
-Please note that the \verb|{subequations}| environment in {\LaTeX}
-will increment the main equation counter even when there are no
-equation numbers displayed. If you forget that, you might write an
-article in which the equation numbers skip from (17) to (20), causing
-the copy editors to wonder if you've discovered a new method of
-counting.
+\textbf{Long-horizon task resumption.} If a robot pauses a cleaning task to recharge, it must recover which subgoals have been completed and which objects or containers have already been manipulated.
 
-{\BibTeX} does not work by magic. It doesn't get the bibliographic
-data from thin air but from .bib files. If you use {\BibTeX} to produce a
-bibliography you must send the .bib files. 
+\textbf{Evidence-aware explanation and safety.} If the robot plans to grasp an object whose location confidence is low, it should re-observe or ask a human. If it reports that a cup is in the sink, it should expose which observations support that claim.
 
-{\LaTeX} can't read your mind. If you assign the same label to a
-subsubsection and a table, you might find that Table I has been cross
-referenced as Table IV-B3. 
+These scenarios require more than retrieving related frames. They require a database that distinguishes current and historical states, tracks uncertainty, exposes evidence, and supports efficient hybrid queries.
 
-{\LaTeX} does not have precognitive abilities. If you put a
-\verb|\label| command before the command that updates the counter it's
-supposed to be using, the label will pick up the last counter to be
-cross referenced instead. In particular, a \verb|\label| command
-should not go before the caption of a figure or a table.
+\subsection{Running Example}
 
-Do not use \verb|\nonumber| inside the \verb|{array}| environment. It
-will not stop equation numbers inside \verb|{array}| (there won't be
-any anyway) and it might stop a wanted equation number in the
-surrounding equation.
-
-\subsection{Some Common Mistakes}\label{SCM}
-\begin{itemize}
-\item The word ``data'' is plural, not singular.
-\item The subscript for the permeability of vacuum $\mu_{0}$, and other common scientific constants, is zero with subscript formatting, not a lowercase letter ``o''.
-\item In American English, commas, semicolons, periods, question and exclamation marks are located within quotation marks only when a complete thought or name is cited, such as a title or full quotation. When quotation marks are used, instead of a bold or italic typeface, to highlight a word or phrase, punctuation should appear outside of the quotation marks. A parenthetical phrase or statement at the end of a sentence is punctuated outside of the closing parenthesis (like this). (A parenthetical sentence is punctuated within the parentheses.)
-\item A graph within a graph is an ``inset'', not an ``insert''. The word alternatively is preferred to the word ``alternately'' (unless you really mean something that alternates).
-\item Do not use the word ``essentially'' to mean ``approximately'' or ``effectively''.
-\item In your paper title, if the words ``that uses'' can accurately replace the word ``using'', capitalize the ``u''; if not, keep using lower-cased.
-\item Be aware of the different meanings of the homophones ``affect'' and ``effect'', ``complement'' and ``compliment'', ``discreet'' and ``discrete'', ``principal'' and ``principle''.
-\item Do not confuse ``imply'' and ``infer''.
-\item The prefix ``non'' is not a word; it should be joined to the word it modifies, usually without a hyphen.
-\item There is no period after the ``et'' in the Latin abbreviation ``et al.''.
-\item The abbreviation ``i.e.'' means ``that is'', and the abbreviation ``e.g.'' means ``for example''.
-\end{itemize}
-An excellent style manual for science writers is \cite{b7}.
-
-\subsection{Authors and Affiliations}
-\textbf{The class file is designed for, but not limited to, six authors.} A 
-minimum of one author is required for all conference articles. Author names 
-should be listed starting from left to right and then moving down to the 
-next line. This is the author sequence that will be used in future citations 
-and by indexing services. Names should not be listed in columns nor group by 
-affiliation. Please keep your affiliations as succinct as possible (for 
-example, do not differentiate among departments of the same organization).
-
-\subsection{Identify the Headings}
-Headings, or heads, are organizational devices that guide the reader through 
-your paper. There are two types: component heads and text heads.
-
-Component heads identify the different components of your paper and are not 
-topically subordinate to each other. Examples include Acknowledgments and 
-References and, for these, the correct style to use is ``Heading 5''. Use 
-``figure caption'' for your Figure captions, and ``table head'' for your 
-table title. Run-in heads, such as ``Abstract'', will require you to apply a 
-style (in this case, italic) in addition to the style provided by the drop 
-down menu to differentiate the head from the text.
-
-Text heads organize the topics on a relational, hierarchical basis. For 
-example, the paper title is the primary text head because all subsequent 
-material relates and elaborates on this one topic. If there are two or more 
-sub-topics, the next level head (uppercase Roman numerals) should be used 
-and, conversely, if there are not at least two sub-topics, then no subheads 
-should be introduced.
-
-\subsection{Figures and Tables}
-\paragraph{Positioning Figures and Tables} Place figures and tables at the top and 
-bottom of columns. Avoid placing them in the middle of columns. Large 
-figures and tables may span across both columns. Figure captions should be 
-below the figures; table heads should appear above the tables. Insert 
-figures and tables after they are cited in the text. Use the abbreviation 
-``Fig.~\ref{fig}'', even at the beginning of a sentence.
-
-\begin{table}[htbp]
-\caption{Table Type Styles}
+Consider the following episode:
 \begin{center}
-\begin{tabular}{|c|c|c|c|}
-\hline
-\textbf{Table}&\multicolumn{3}{|c|}{\textbf{Table Column Head}} \\
-\cline{2-4} 
-\textbf{Head} & \textbf{\textit{Table column subhead}}& \textbf{\textit{Subhead}}& \textbf{\textit{Subhead}} \\
-\hline
-copy& More table copy$^{\mathrm{a}}$& &  \\
-\hline
-\multicolumn{4}{l}{$^{\mathrm{a}}$Sample of a Table footnote.}
+\begin{tabular}{ll}
+\toprule
+Time & Event \\
+\midrule
+08:00 & cup is on table \\
+08:05 & robot observes cup on table \\
+08:20 & human moves cup from table to sink \\
+08:25 & detector falsely reports cup on table \\
+08:30 & robot observes cup in sink \\
+08:40 & user asks the robot to bring the cup \\
+\bottomrule
 \end{tabular}
-\label{tab1}
 \end{center}
+
+A vector memory may retrieve both table and sink observations; a static scene graph may only retain the latest state; a latest-wins temporal graph may be misled by the false detection. \sys maintains interval facts and evidence confidence, allowing it to answer that the cup is currently most likely in the sink, that it was on the table before 08:20, and that the sink claim is supported by observations around 08:30.
+
+\section{Problem Definition}
+
+\subsection{Observation Stream}
+
+An embodied agent produces an observation stream $\mathcal{O}=\langle o_1,o_2,\ldots\rangle$. Each observation is a tuple
+\begin{equation}
+    o=(id,t_v,t_x,a,r,s,p,q,l,c,e),
+\end{equation}
+where $t_v$ is the event time in the world, $t_x$ is the arrival or ingestion time, $a$ is the agent, $r$ is the region, $s$ is the subject object, $p$ is a predicate, $q$ is the object or value, $l$ is the location, $c\in[0,1]$ is the observation confidence, and $e$ is an evidence reference such as a frame, sensor, or model output.
+
+The stream may contain missed detections, false positives, relation errors, object identity switches, delayed observations, and out-of-order arrivals. \sys does not solve perception; it manages the uncertain outputs of perception systems.
+
+\subsection{Embodied Memory Facts}
+
+A memory fact is a tuple
+\begin{equation}
+    f=(s,p,q,[v_s,v_e),[x_s,x_e),\rho,E,\sigma),
+\end{equation}
+where $(s,p,q)$ is a scene-graph claim, $[v_s,v_e)$ is the valid-time interval, $[x_s,x_e)$ is the transaction-time interval, $\rho$ is the fact confidence, $E$ is provenance, and $\sigma$ is the fact status such as active, expired, or contradicted.
+
+Valid time models when the fact is believed to hold in the world. Transaction time models when the database knew or stored the fact. This distinction is important for delayed observations and retrospective corrections.
+
+\subsection{Query Workload}
+
+We study six query classes.
+
+\textbf{Current queries} ask for the best current state of an object or relation. \textbf{As-of queries} ask for the state at a past valid time. \textbf{Change queries} identify objects or relations that changed in a region or time range. \textbf{Provenance queries} return observations that support or contradict a claim. \textbf{Uncertain top-k queries} return ranked candidate locations or relations with confidence. \textbf{Task-oriented queries} combine semantic, temporal, spatial, and confidence constraints to support robot planning.
+
+\section{LifelongSceneDB Data Model}
+
+\subsection{Probabilistic Bitemporal Scene Graph}
+
+\sys represents memory as a probabilistic bitemporal scene graph. Nodes correspond to objects, rooms, surfaces, containers, agents, or abstract task entities. Edges correspond to relations such as \emph{on}, \emph{inside}, \emph{near}, \emph{reachable}, \emph{seen-by}, and \emph{moved-to}. Each edge is a memory fact with valid time, transaction time, confidence, and provenance.
+
+\begin{table}[t]
+\caption{Schema of an embodied memory fact.}
+\label{tab:fact-schema}
+\centering
+\begin{tabular}{ll}
+\toprule
+Field & Meaning \\
+\midrule
+subject, predicate, object & Scene-graph claim \\
+valid start/end & Time interval in the world \\
+transaction start/end & Time interval in the database \\
+confidence & Belief score of the claim \\
+status & Active, expired, or contradicted \\
+provenance & Supporting and contradicting observations \\
+spatial info & Region, surface, or 3D location \\
+embedding & Optional semantic representation \\
+\bottomrule
+\end{tabular}
 \end{table}
 
-\begin{figure}[htbp]
-\centerline{\includegraphics{fig1.png}}
-\caption{Example of a figure caption.}
-\label{fig}
-\end{figure}
+\subsection{Robot-Facing Interfaces}
 
-Figure Labels: Use 8 point Times New Roman for Figure labels. Use words 
-rather than symbols or abbreviations when writing Figure axis labels to 
-avoid confusing the reader. As an example, write the quantity 
-``Magnetization'', or ``Magnetization, M'', not just ``M''. If including 
-units in the label, present them within parentheses. Do not label axes only 
-with units. In the example, write ``Magnetization (A/m)'' or ``Magnetization 
-\{A[m(1)]\}'', not just ``A/m''. Do not label axes with a ratio of 
-quantities and units. For example, write ``Temperature (K)'', not 
-``Temperature/K''.
+Although \sys can expose declarative queries, robot planners interact with it through task-facing APIs:
+\begin{itemize}
+    \item \texttt{locate\_current(desc, constraints)} returns the most likely current state.
+    \item \texttt{locate\_asof(desc, time)} returns the state at a valid time.
+    \item \texttt{detect\_changes(region, range)} returns changed objects and relations.
+    \item \texttt{get\_evidence(claim)} returns supporting and contradicting observations.
+    \item \texttt{topk\_locations(desc, k)} returns uncertain candidate locations.
+    \item \texttt{should\_reobserve(claim, threshold)} decides whether memory confidence is sufficient for action.
+\end{itemize}
 
-\section*{Acknowledgment}
+\section{Online Memory Maintenance}
 
-The preferred spelling of the word ``acknowledgment'' in America is without 
-an ``e'' after the ``g''. Avoid the stilted expression ``one of us (R. B. 
-G.) thanks $\ldots$''. Instead, try ``R. B. G. thanks$\ldots$''. Put sponsor 
-acknowledgments in the unnumbered footnote on the first page.
+\sys ingests observations online and updates memory facts. The maintenance procedure first identifies candidate facts related to the observation, then updates supporting facts, decays conflicting facts, inserts new facts when needed, and updates provenance and indexes.
 
-\section*{References}
+For a supporting observation with confidence $c$, we update a fact confidence $\rho$ as
+\begin{equation}
+    \rho' = 1-(1-\rho)(1-c).
+\end{equation}
+For a conflicting observation, we decay the existing fact as
+\begin{equation}
+    \rho' = \rho(1-\gamma c),
+\end{equation}
+where $\gamma$ controls the strength of contradiction. If confidence falls below an expiration threshold, \sys closes the old valid interval and marks the fact as contradicted or expired.
 
-Please number citations consecutively within brackets \cite{b1}. The 
-sentence punctuation follows the bracket \cite{b2}. Refer simply to the reference 
-number, as in \cite{b3}---do not use ``Ref. \cite{b3}'' or ``reference \cite{b3}'' except at 
-the beginning of a sentence: ``Reference \cite{b3} was the first $\ldots$''
+\begin{algorithm}[t]
+\caption{IngestObservation}
+\label{alg:ingest}
+\begin{algorithmic}[1]
+\REQUIRE observation $o$, fact store $F$, indexes $I$
+\STATE candidates $\leftarrow$ lookup related facts using object and region indexes
+\FOR{each candidate fact $f$}
+    \IF{$o$ supports $f$}
+        \STATE update $f.confidence$ with support rule
+        \STATE add $o$ to supporting provenance of $f$
+    \ELSIF{$o$ conflicts with $f$}
+        \STATE decay $f.confidence$ with conflict rule
+        \STATE add $o$ to contradicting provenance of $f$
+        \IF{$f.confidence$ below threshold}
+            \STATE close $f.valid\_end$ at $o.event\_time$
+            \STATE mark $f$ as contradicted
+        \ENDIF
+    \ENDIF
+\ENDFOR
+\IF{no active fact explains $o$}
+    \STATE insert new fact with valid time $o.event\_time$ and transaction time $o.arrival\_time$
+\ENDIF
+\STATE update temporal, object, region, confidence, and provenance indexes
+\end{algorithmic}
+\end{algorithm}
 
-Number footnotes separately in superscripts. Place the actual footnote at 
-the bottom of the column in which it was cited. Do not put footnotes in the 
-abstract or reference list. Use letters for table footnotes.
+\section{Query Processing and Indexing}
 
-Unless there are six authors or more give all authors' names; do not use 
-``et al.''. Papers that have not been published, even if they have been 
-submitted for publication, should be cited as ``unpublished'' \cite{b4}. Papers 
-that have been accepted for publication should be cited as ``in press'' \cite{b5}. 
-Capitalize only the first word in a paper title, except for proper nouns and 
-element symbols.
+\sys maintains lightweight hybrid indexes for the query workload:
+\begin{itemize}
+    \item an object index maps object identities or classes to fact identifiers;
+    \item a temporal index stores valid intervals for as-of and change queries;
+    \item a region index maps rooms or surfaces to active objects;
+    \item a confidence index supports top-k uncertain state queries;
+    \item a provenance index maps facts to supporting and contradicting observations.
+\end{itemize}
 
-For papers published in translation journals, please give the English 
-citation first, followed by the original foreign-language citation \cite{b6}.
+The current prototype uses a rule-based planner. If a query specifies an object, the object index is applied first; if it specifies time, the temporal index filters valid intervals; if it specifies region, the region index filters spatial candidates; final candidates are ranked by confidence and optionally returned with provenance.
 
-\begin{thebibliography}{00}
-\bibitem{b1} G. Eason, B. Noble, and I. N. Sneddon, ``On certain integrals of Lipschitz-Hankel type involving products of Bessel functions,'' Phil. Trans. Roy. Soc. London, vol. A247, pp. 529--551, April 1955.
-\bibitem{b2} J. Clerk Maxwell, A Treatise on Electricity and Magnetism, 3rd ed., vol. 2. Oxford: Clarendon, 1892, pp.68--73.
-\bibitem{b3} I. S. Jacobs and C. P. Bean, ``Fine particles, thin films and exchange anisotropy,'' in Magnetism, vol. III, G. T. Rado and H. Suhl, Eds. New York: Academic, 1963, pp. 271--350.
-\bibitem{b4} K. Elissa, ``Title of paper if known,'' unpublished.
-\bibitem{b5} R. Nicole, ``Title of paper with only first word capitalized,'' J. Name Stand. Abbrev., in press.
-\bibitem{b6} Y. Yorozu, M. Hirano, K. Oka, and Y. Tagawa, ``Electron spectroscopy studies on magneto-optical media and plastic substrate interface,'' IEEE Transl. J. Magn. Japan, vol. 2, pp. 740--741, August 1987 [Digests 9th Annual Conf. Magnetics Japan, p. 301, 1982].
-\bibitem{b7} M. Young, The Technical Writer's Handbook. Mill Valley, CA: University Science, 1989.
-\end{thebibliography}
-\vspace{12pt}
-\color{red}
-IEEE conference templates contain guidance text for composing and formatting conference papers. Please ensure that all template text is removed from your conference paper prior to submission to the conference. Failure to remove the template text from your paper may result in your paper not being published.
+\section{Experimental Evaluation}
+
+\subsection{Research Questions}
+
+Our evaluation is designed around four questions:
+\begin{itemize}
+    \item RQ1: Does \sys answer embodied memory queries more accurately than vector, static-graph, and latest-wins memory baselines?
+    \item RQ2: Is \sys robust to noisy and delayed observations?
+    \item RQ3: How much do bitemporal time, confidence, provenance, and indexing contribute?
+    \item RQ4: Does \sys improve downstream embodied object search and previous-state restoration?
+\end{itemize}
+
+\subsection{Dynamic Memory Workload}
+
+We generate synthetic dynamic embodied episodes over household-style scenes. Each episode contains objects, regions, observations, and events such as \texttt{MOVE}, \texttt{OPEN}, \texttt{CLOSE}, \texttt{HIDE}, \texttt{REVEAL}, \texttt{HUMAN\_MOVE}, and \texttt{ROBOT\_OBSERVE}. Ground-truth events are converted into noisy observation streams with missed detections, false detections, wrong locations, delayed arrivals, and out-of-order observations.
+
+Queries and answers are generated from ground truth. A movement event such as \texttt{MOVE(cup, table, sink, 08:20)} produces current, as-of, change, and provenance queries. This lets us evaluate both database correctness and task usefulness with known answers.
+
+\subsection{Baselines}
+
+We compare against the following baselines:
+\begin{itemize}
+    \item \textbf{Vector memory}: retrieves observations by text or feature similarity.
+    \item \textbf{Static scene graph}: keeps only the latest active relation.
+    \item \textbf{Latest-wins temporal memory}: maintains history but accepts the latest observation as truth.
+    \item \textbf{No-confidence}: maintains temporal facts but ignores confidence fusion.
+    \item \textbf{No-bitemporal}: uses a single timestamp rather than valid and transaction time.
+    \item \textbf{No-index}: scans all facts for each query.
+\end{itemize}
+
+\subsection{Metrics}
+
+Database-level metrics include current-state accuracy, as-of accuracy, change detection F1, provenance precision and recall, stale fact rate, query latency, update throughput, and memory footprint. Task-level metrics include object-search success, wrong-location visits, search steps, restoration accuracy, and unnecessary moves.
+
+\subsection{Preliminary Experiment Plan}
+
+The first prototype will produce the following figures and tables:
+\begin{itemize}
+    \item accuracy versus observation noise rate;
+    \item as-of accuracy versus delayed-observation rate;
+    \item query latency versus number of memory facts;
+    \item ablation table for bitemporal time, confidence, provenance, and indexing;
+    \item task-level results for temporal object search and previous-state restoration.
+\end{itemize}
+
+\textbf{TODO:} Replace this paragraph with quantitative results after the benchmark scripts finish running.
+
+\section{Related Work}
+
+\subsection{Embodied Question Answering and Embodied Memory}
+OpenEQA evaluates open-vocabulary embodied question answering under episodic memory and active exploration settings~\cite{openeqa}. It is a benchmark rather than a memory database. \sys can be used as a memory backend for embodied QA agents by providing structured and provenance-aware memory contexts.
+
+\subsection{3D and Dynamic Scene Memories}
+3D-Mem stores compact 3D scene memories for embodied exploration and reasoning~\cite{yang20253dmem}. DynaMem maintains dynamic spatio-semantic memory for open-world mobile manipulation~\cite{yu2024dynamem}. These systems show that dynamic memory is useful for embodied agents, but their main focus is agent performance and spatial memory, not database-level temporal, uncertainty, provenance, and hybrid query semantics.
+
+\subsection{Structured Agent Memory}
+GraphPad uses mutable scene graphs, navigation logs, and scratchpads as structured inference-time memory for embodied agents~\cite{graphpad}. In contrast, \sys is a persistent lifelong memory backend with bitemporal facts, confidence, provenance, and database query interfaces.
+
+\subsection{Long-Horizon Vision-Language Navigation}
+Long-horizon VLN work such as MGDM uses short-term observation memories and long-term retrieval from navigation datasets to guide multi-stage navigation~\cite{song2025lhvln}. This memory is model-internal and action-oriented. \sys instead stores the agent's own dynamic world state as a queryable database.
+
+\subsection{Temporal, Probabilistic, Provenance, and Graph Databases}
+\sys builds on ideas from temporal databases, probabilistic data management, graph data management, provenance, spatial data, and vector retrieval. The contribution is not to reinvent these individual database concepts, but to combine them into a system model for noisy, dynamic, and task-facing embodied memory.
+
+\section{Conclusion}
+
+This paper introduces \sys, a probabilistic bitemporal scene-graph store for embodied agents. \sys treats long-term embodied memory as a data engineering problem: noisy observations are converted into queryable world facts with time, confidence, and provenance. The system supports current, as-of, change, evidence, and task-oriented queries, and uses lightweight hybrid indexes for efficient execution. The planned evaluation studies whether these database-level memory semantics improve robustness, query efficiency, and downstream embodied task performance.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
 
 \end{document}
