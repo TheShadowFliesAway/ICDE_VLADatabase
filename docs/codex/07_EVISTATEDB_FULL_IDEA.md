@@ -1,7 +1,7 @@
 # EviStateDB / EviStateBench：从具身观察流维护时态任务状态视图
 
 > 本文档是不考虑短期实现时间限制后的完整构思。  
-> 目标：重新定义一个更契合 ICDE 的具身数据管理选题，避免落入“又一个 embodied memory / recall system”的叙事。  
+> 目标：重新定义一个更契合 ICDE 的具身数据管理选题。  
 > 推荐论文形态：优先 EAB（Experiment, Analysis, and Benchmark），同时保留 regular system paper 的可能性。  
 > 推荐标题：`[Experiment, Analysis, and Benchmark] EviStateBench: Evaluating Temporal Task-State View Maintenance over Embodied Observation Streams`  
 > 参考系统名：`EviStateDB`
@@ -69,13 +69,7 @@ Benchmarking:
 
 ICDE 2027 CFP 明确覆盖 data models、query processing、storage/indexing、benchmarking、data streams、temporal/spatial data、uncertain/probabilistic data、provenance、graph/vector/multimodal data 和 domain-specific data engineering。EAB 类别也明确接受 benchmark / evaluation method，并要求可复现实验 artifact。
 
-因此，EviStateDB 的安全表述不是：
-
-```text
-我们做一个 embodied memory system。
-```
-
-而是：
+因此，EviStateDB 的安全表述是：
 
 ```text
 我们定义并评测 embodied observation streams 上的 temporal task-state view maintenance workload，
@@ -167,7 +161,7 @@ obs_3: inside(cup, cabinet) = false, confidence 0.91
 是否需要重新观察？
 ```
 
-这不是普通 append-only log，也不是 retrieval memory，而是 uncertain temporal state-view maintenance。
+这不是普通 append-only log，而是 uncertain temporal state-view maintenance。
 
 ---
 
@@ -177,13 +171,7 @@ obs_3: inside(cup, cabinet) = false, confidence 0.91
 
 BEHAVIOR / BDDL 已经用 first-order logic predicates 定义任务的 initial conditions 和 goal conditions。OmniGibson 也提供丰富 object states，例如 `Open`、`Inside`、`OnTop`、`Temperature`、`Saturated`、`IsGrasping` 等。
 
-所以不能写：
-
-```text
-We introduce task predicates for embodied agents.
-```
-
-应该写：
+所以写：
 
 ```text
 We use task predicates as data views to be maintained under noisy, delayed, and conflicting observations.
@@ -193,13 +181,7 @@ We use task predicates as data views to be maintained under noisy, delayed, and 
 
 机器人领域已有 symbolic state estimation 工作，例如用 predicate classifiers 和 Bayesian state estimation 从 noisy multimodal observations 中估计 high-level symbolic states。
 
-所以不能把贡献写成：
-
-```text
-We estimate symbolic states from observations.
-```
-
-应该写：
+所以把贡献写成：
 
 ```text
 We benchmark and analyze temporal state-view maintenance as a data management workload, including update semantics, query semantics, provenance, and baseline comparison.
@@ -851,7 +833,7 @@ out-of-order repair cost
 
 ---
 
-## 11. 实验设计
+## 11. 实验设计(只做参考)
 
 ### Experiment 1: State Tracking
 
@@ -980,7 +962,7 @@ No-late-repair
 
 ---
 
-## 12. BEHAVIOR / OmniGibson 是否足够？
+## 12. BEHAVIOR / OmniGibson 单个数据集是否足够？
 
 ### 12.1 构建系统：足够
 
