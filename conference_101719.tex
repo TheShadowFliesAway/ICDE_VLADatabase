@@ -223,48 +223,11 @@ The artifact boundary also defines what counts as a fair comparison. All systems
 
 \bench\ varies several workload axes simultaneously. The main axes are query family, predicate family, episode horizon, stream regime, temporal position, and evidence status. Query family determines the answer shape. Predicate family determines whether the system is maintaining unary states, binary relations, numeric states, contact configurations, or material states. Episode horizon controls the length of the observation stream and the number of opportunities for stale or repaired state. Stream regime controls whether the public evidence is clean or perturbed. Temporal position distinguishes initial, transition-near, and final queries. Evidence status captures whether the public stream offers support, contradict evidence, both, or neither.
 
-\begin{table}[!t]
-\caption{Workload axes used to interpret benchmark results.}
-\label{tab:workload-axes}
-\centering
-\footnotesize
-\begin{tabular}{@{}p{0.28\linewidth}p{0.58\linewidth}@{}}
-\toprule
-Axis & Examples and diagnostic purpose \\
-\midrule
-Query family & State check, as-of state, state diff, goal check \\
-Predicate family & Unary state, relation, numeric state, contact, material state \\
-Episode horizon & Short, medium, long episodes for scaling and drift analysis \\
-Stream regime & Clean, missing, temporal disorder, conflict, mixed \\
-Temporal position & Initial, transition-near, post-transition, final \\
-Evidence status & Supported, missing, contradicted, uncertain, conflicting \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 These axes are not merely descriptive metadata. They determine how results should be read. A system that performs well on clean final-state checks may still fail on transition-near as-of queries. A system that handles Boolean unary predicates may not handle numeric temperature states or relation changes. A system that answers goals correctly on short episodes may degrade on long episodes because stale evidence accumulates. The evaluation therefore reports overall metrics together with query-family and stream-regime breakdowns.
 
 \subsection{Perturbation Regimes}
 
-Table~\ref{tab:perturbations} summarizes the regimes used in the benchmark design. The main release contains clean and hard mixed public streams. The broader protocol supports single-factor regimes for diagnosis, including missing observations, temporal disorder, low confidence, and explicit conflicts. The hard mixed stream is the main stress condition because embodied observation streams rarely contain a single isolated issue.
-
-\begin{table}[!t]
-\caption{Perturbation regimes and the data-management challenge they create.}
-\label{tab:perturbations}
-\centering
-\footnotesize
-\begin{tabular}{@{}p{0.24\linewidth}p{0.34\linewidth}p{0.29\linewidth}@{}}
-\toprule
-Regime & Stream issue & Maintenance challenge \\
-\midrule
-Clean & Simulator-derived observations & Basic state-view construction \\
-Missing & Omitted evidence near transitions & Unknown and stale-state handling \\
-Temporal disorder & Delayed or out-of-order arrival & Valid-time and transaction-time repair \\
-Conflict & Support and contradict evidence coexist & Confidence and provenance tracking \\
-Mixed & Multiple issues combined & Robustness under realistic stream defects \\
-\bottomrule
-\end{tabular}
-\end{table}
+The perturbation regimes are chosen to correspond to data-management failures rather than to a single sensor model. Clean streams test basic state-view construction. Missing observations test unknown and stale-state handling. Temporal disorder tests valid-time and transaction-time repair. Conflict tests confidence and provenance tracking. The reported hard mixed stream combines several issues and is the main stress condition because embodied observation streams rarely contain a single isolated issue.
 
 \subsection{Data Model and Query Semantics}
 
@@ -424,22 +387,6 @@ The evaluation compares \engine\ with two transparent baselines. \emph{Recall Me
 
 All systems must use the same public task specifications, observation streams, query sets, and metadata. They must not read hidden timelines, hidden answer sets, or private perturbation labels. All systems submit predictions in the same QueryAnswer format. A single evaluator computes exact accuracy, status accuracy, value accuracy, change-set F1, goal-predicate F1, coverage, and efficiency metrics. This shared protocol is what turns \bench\ from a data collection into an EAB benchmark.
 
-\begin{table}[!t]
-\caption{Primary systems and expected stress points.}
-\label{tab:baselines}
-\centering
-\footnotesize
-\begin{tabular}{@{}p{0.24\linewidth}p{0.31\linewidth}p{0.31\linewidth}@{}}
-\toprule
-System & Representation & Expected weakness \\
-\midrule
-Recall memory & Retrieved evidence snippets & State diffs and goal views \\
-Temporal log & Append-only observations & Structured task-derived views \\
-\engine & Bitemporal state view & Update overhead and design complexity \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \subsection{Reporting Protocol}
 
 Each run report records the public artifact identifier, stream name, system version, hardware, random seed where applicable, preprocessing time, update time, query time, and output coverage. Accuracy and efficiency are reported separately. A system that answers accurately by scanning the full observation stream for every query is different from a system that maintains a materialized view online; both are valid systems under \bench, but the trade-off is part of the EAB analysis.
@@ -479,6 +426,15 @@ Most episodes in the reported artifact are short controlled transitions, but the
 
 \begin{figure*}[!t]
 \centering
+\includegraphics[width=0.84\textwidth]{figures/figC_long_state_chain_timeline.pdf}
+\caption{Aggregated long state-chain templates. The 30-episode long subset adds multi-stage temporal maintenance cases, such as actuator, temperature, hot, cooked, and frozen state chains, to the larger short-transition benchmark.}
+\label{fig:long-chain}
+\end{figure*}
+
+Fig.~\ref{fig:long-chain} makes this diagnostic role explicit. The long subset is small and is not a separate robotics claim; it shows that the artifact can express chained state consequences and convert them into temporal availability cases under hard mixed evidence.
+
+\begin{figure*}[!t]
+\centering
 \includegraphics[width=\textwidth]{figures/figD_baseline_main_results.pdf}
 \caption{Baseline results on the final hard split. The upper heatmap reports query-type exact accuracy, the lower-left panel reports structured answer metrics, and the lower-right panel reports p95 per-query runtime from prediction outputs. All methods cover the full 5,848-query workload.}
 \label{fig:baseline-results}
@@ -496,6 +452,15 @@ The runtime panel reports per-query prediction time, not full end-to-end indexin
 
 The baseline diagnostics separate two different messages. First, answer status matters. Recall memory fails especially on unknown, uncertain, and conflict answers, while Temporal log and \engine\ recover most unknown and uncertain statuses. Second, the high predicate-level accuracy for Temporal log and \engine\ on \texttt{AS\_OF\_STATE} and \texttt{WHY\_STATE} should not be overstated. It means that explicit event-time and transaction-time maintenance is effective for these two query families. It does not mean that all of \bench\ is easy, because the residual errors in Fig.~\ref{fig:baseline-results} concentrate in set-valued uncertainty, state diffs, preconditions, failure localization, and goal views.
 
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.84\textwidth]{figures/figE_failure_difficulty_analysis.pdf}
+\caption{Difficulty analysis by answer status and predicate. Recall memory degrades across answer statuses and target predicates, while explicit temporal-state baselines largely solve \texttt{AS\_OF\_STATE} and \texttt{WHY\_STATE}.}
+\label{fig:failure-diagnostics}
+\end{figure*}
+
+Fig.~\ref{fig:failure-diagnostics} explains where residual difficulty comes from. Retrieval fails broadly, while Temporal log and \engine\ largely recover temporal and provenance answers. The remaining difficulty is therefore concentrated in answer shapes that require sets, diffs, preconditions, failure localization, and goal aggregation.
+
 The interpretation should avoid two common mistakes. It should not treat \engine\ as the oracle merely because it is the reference engine. It should also not claim that a lower score means a method is bad for all embodied AI tasks. A retrieval memory that performs poorly on state diffs may still be useful for open-ended question answering. The EAB claim is narrower and more useful: \bench\ identifies which systems are good at temporal task-state view maintenance under a shared, reproducible workload.
 
 \section{Lessons, Limitations, and Artifact Availability}
@@ -503,29 +468,15 @@ The interpretation should avoid two common mistakes. It should not treat \engine
 
 \subsection{Lessons from the Benchmark Design}
 
-The first lesson is that latest-state memory is not a sufficient abstraction for embodied task state. Late evidence can revise the answer to an as-of query, and contradictory evidence can make the correct answer uncertain or conflicting rather than simply true or false.
-
-The second lesson is that retrieval and view maintenance answer different questions. Retrieval can surface relevant evidence, but a task executor often needs a maintained predicate value, a change set, or a goal-satisfaction view. \bench\ therefore evaluates QueryAnswers, not retrieved frames alone.
-
-The third lesson is that provenance should be part of the benchmark design even when the first main release emphasizes core state answers. Support and contradict evidence are needed for why queries, failure localization, and trust calibration. They also help diagnose whether a system was correct for the right reason.
-
-The fourth lesson is that goal views are more than a convenience layer. A system may answer individual predicate checks correctly but still fail to aggregate them into a task-level answer if it mishandles unknown or conflicting predicates. Conversely, a goal-level score can hide which predicate failed. \bench\ therefore reports both goal satisfaction and goal-predicate F1.
-
-The fifth lesson is that benchmark artifacts need validation reports as first-class objects. Without public validation, a user cannot tell whether a failure comes from their system, from malformed query metadata, from leaked answer fields, or from inconsistent task specifications. The reported release treats validation status, stream counts, and query counts as part of the benchmark profile.
+\bench\ exposes five practical lessons. First, latest-state memory is not a sufficient abstraction because late evidence can revise as-of answers and contradict evidence can make a state uncertain or conflicting. Second, retrieval and view maintenance answer different questions: retrieval can surface evidence, but task execution often needs a maintained predicate value, change set, or goal view. Third, provenance should be first-class because support and contradict evidence are needed for why queries, failure localization, and trust calibration. Fourth, goal views are not just convenience layers; they can fail even when individual predicates are partly correct. Fifth, validation reports are benchmark artifacts, since malformed query metadata or leaked answer fields can invalidate comparisons as much as model errors.
 
 \subsection{Limitations}
 
-\bench\ makes a controlled isolation choice. The main artifact is simulator-grounded and structured; it does not claim to solve raw perception or low-level robot control. This is a limitation, but also a design requirement for a reproducible data-management benchmark. If perception and control are folded into the main score too early, failures become hard to attribute.
-
-The reported public release focuses on structured simulator-grounded observations. It includes provenance, precondition, uncertain-state, and failure-localization queries, but raw perception-derived streams are not used as the main correctness source. This keeps the evaluation reproducible, but it limits claims about real sensor distributions.
-
-Finally, the reported baseline set is intentionally conservative. It emphasizes transparent systems whose failure modes can be analyzed under the benchmark. Neural memory, LLM-based agents, and full embodied pipelines are outside this baseline set; they fit the benchmark only when their public inputs, inference budgets, and output schemas can be made comparable.
+\bench\ makes a controlled isolation choice. The main artifact is simulator-grounded and structured; it does not claim to solve raw perception or low-level robot control. This is a limitation, but also a design requirement for a reproducible data-management benchmark, because folding perception and control into the main score too early would make failures hard to attribute. The reported baseline set is also intentionally conservative: neural memory, LLM-based agents, and full embodied pipelines fit the benchmark only when their public inputs, inference budgets, and output schemas can be made comparable.
 
 \subsection{Artifact Availability}
 
-The benchmark release provides public task specifications, public observation streams, query sets, manifests, validation reports, build commands, baseline implementations, prediction schemas, and evaluator scripts. Hidden timelines and answer sets are used for evaluation. Artifact hosting must avoid reviewer tracking and follow the ICDE submission instructions.
-
-The release provides a minimal reproduction path: build or validate public artifacts, run each baseline on the hard mixed stream, validate prediction schema, evaluate predictions, and regenerate the reported tables and figures. For EAB review, this path is as important as the dataset itself because it shows that the benchmark is executable rather than only descriptive.
+The benchmark release provides public task specifications, observation streams, query sets, manifests, validation reports, build commands, baseline implementations, prediction schemas, and evaluator scripts. Hidden timelines and answer sets are used for evaluation. The minimal reproduction path builds or validates public artifacts, runs each baseline on the hard mixed stream, validates prediction schema, evaluates predictions, and regenerates the reported tables and figures.
 
 \section{Related Work}
 \label{sec:related}
@@ -534,21 +485,15 @@ The release provides a minimal reproduction path: build or validate public artif
 
 BEHAVIOR introduced a benchmark of everyday household activities with predicate-logic activity specifications and simulation-based evaluation~\cite{srivastava2022behavior}. BEHAVIOR-1K scales this line of work to 1,000 activities and introduces OmniGibson as a simulation environment for realistic physics and rendering~\cite{li2024behavior1k}. Habitat and Habitat 2.0 support embodied navigation and rearrangement evaluation~\cite{savva2019habitat,szot2021habitat}; AI2-THOR provides an interactive 3D environment for visual AI~\cite{kolve2017ai2thor}; VirtualHome represents household activities as executable programs~\cite{puig2018virtualhome}; and TEACh studies embodied agents that interact through dialogue~\cite{padmakumar2022teach}. \bench\ uses the same general idea that task specifications and simulator truth can ground evaluation, but it changes the target from embodied task success to temporal task-state view maintenance.
 
-ALFRED evaluates instruction following for household tasks~\cite{shridhar2020alfred}. OpenEQA evaluates embodied question answering over episodic memory and active exploration~\cite{majumdar2024openeqa}. These benchmarks ask whether an agent can act or answer language questions. \bench\ asks whether a system can maintain and query a temporal state view from imperfect evidence.
-
-Work on embodied memories and scene representations is complementary. Such systems often store observations, scene graphs, maps, or retrieved context for downstream decisions. \bench\ can evaluate those systems if they can produce QueryAnswers from public streams, but it does not require a particular memory architecture. This representation-agnostic design is important because a benchmark should compare methods without prescribing their internal storage model.
+ALFRED evaluates instruction following~\cite{shridhar2020alfred}, and OpenEQA evaluates embodied question answering over episodic memory and active exploration~\cite{majumdar2024openeqa}. These benchmarks ask whether an agent can act or answer language questions. \bench\ asks whether a system can maintain and query a temporal state view from imperfect evidence, without prescribing the system's internal memory architecture.
 
 \subsection{Temporal, Stream, and Provenance Data Management}
 
-Temporal databases separate the time when a fact is valid in the modeled world from the time when a database records or knows the fact~\cite{snodgrass1999developing,jensen1999temporal}. Stream systems study continuous processing over arriving data~\cite{babcock2002models,garofalakis2016data}. Incremental view maintenance and materialized-view maintenance study how derived database state can be updated after base changes~\cite{gupta1995maintenance,zhuge1995view}. Provenance models record how query results are derived from input data~\cite{green2007provenance,cheney2009provenance}. Uncertain and probabilistic data management studies query answering when input facts are noisy or probabilistic~\cite{aggarwal2009uncertain,dalvi2007efficient}. \bench\ brings these ideas into embodied task-state maintenance, where event-time and arrival-time mismatch, missing observations, conflicting evidence, and task-derived goal views appear together.
-
-The benchmark also connects to incremental view maintenance and uncertain data. The maintained \tsv\ can be seen as a materialized view over an observation log, but its updates include late-arrival repair, contradict evidence, confidence changes, and task-derived aggregation. \bench\ does not propose a single optimal view-maintenance algorithm. Instead, it defines the workload that competing algorithms must satisfy.
+Temporal databases separate the time when a fact is valid in the modeled world from the time when a database records or knows the fact~\cite{snodgrass1999developing,jensen1999temporal}. Stream systems study continuous processing over arriving data~\cite{babcock2002models,garofalakis2016data}. Incremental view maintenance studies how derived database state can be updated after base changes~\cite{gupta1995maintenance,zhuge1995view}. Provenance and uncertain-data systems address evidence and noisy facts~\cite{green2007provenance,cheney2009provenance,aggarwal2009uncertain,dalvi2007efficient}. \bench\ brings these ideas into embodied task-state maintenance, where event-time and arrival-time mismatch, missing observations, conflicting evidence, and task-derived goal views appear together.
 
 \subsection{Experiment, Analysis, and Benchmark Papers}
 
-Database benchmark papers often contribute workload models, artifact rules, and diagnostic analyses rather than only a new algorithm. LDBC benchmarks standardize graph workloads and reporting rules for social-network and graph-analytics settings~\cite{erling2015ldbc,iosup2016ldbc}; TSM-Bench benchmarks time-series database systems for monitoring applications~\cite{khelifati2023tsmbench}; and FinBench defines a financial graph transaction workload~\cite{qi2025finbench}. Recent EAB papers similarly contribute unified evaluation frameworks and analysis of method trade-offs: SQLMorph mutates text-to-SQL workloads and introduces fine-grained metrics~\cite{malekpour2026sqlmorph}; BEACON provides a benchmark framework for subgraph counting~\cite{najafi2025beacon}; and plan-based AQP analysis decomposes system mechanisms to explain performance differences~\cite{mu2025aqp}. \bench\ follows this EAB pattern: the contribution is the benchmark artifact, workload, evaluator, and analysis of where baseline strategies succeed or fail.
-
-This EAB framing also guides the paper structure. The paper spends substantial space on artifact design, query semantics, metrics, validation, and interpretation of failures. A thin benchmark description followed by a large system evaluation would misrepresent the contribution; the benchmark itself is the main object.
+Database benchmark and EAB papers often contribute workload models, artifact rules, and diagnostic analyses rather than only a new algorithm. LDBC standardizes graph workloads~\cite{erling2015ldbc,iosup2016ldbc}; TSM-Bench benchmarks time-series systems~\cite{khelifati2023tsmbench}; and FinBench defines a financial graph transaction workload~\cite{qi2025finbench}. Recent EAB papers similarly contribute evaluation frameworks and fine-grained diagnostics, including SQLMorph~\cite{malekpour2026sqlmorph}, BEACON~\cite{najafi2025beacon}, and plan-based AQP analysis~\cite{mu2025aqp}. \bench\ follows this pattern: the contribution is the benchmark artifact, workload, evaluator, and analysis of where baseline strategies succeed or fail.
 
 \section{Conclusion}
 
