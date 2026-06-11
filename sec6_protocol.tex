@@ -1,0 +1,64 @@
+
+\section{Reference Engine and Experimental Protocol}
+\label{sec:protocol}
+
+\subsection{EviStateDB as a Reference Baseline}
+
+\engine\ is a reference baseline engine for \bench. It ingests StateObservation streams and maintains a \tsv\ over task-state atoms. For each atom, it records valid-time intervals, transaction-time revisions, confidence, support evidence, contradict evidence, status, and revision history. It also derives task-facing views required by the workload, including goal views, precondition views, state-diff views, uncertain-state views, and failure-localization views.
+\engine\ is a baseline, not the benchmark oracle. The benchmark is designed to evaluate any system that can read the public artifacts and emit QueryAnswer predictions. \engine\ provides one interpretable data-management implementation of bitemporal repair, evidence tracking, and task-derived view maintenance, but it does not generate the hidden answers used to judge other systems.
+Internally, \engine\ stores an observation log and materializes state intervals indexed by episode, predicate, arguments, valid time, and transaction time. Task-derived views are computed from the maintained intervals rather than from hidden timelines or answer files. This design makes \engine\ a concrete reference point for systems that trade update cost for query speed, while keeping \bench\ representation-agnostic.
+
+
+\subsection{Maintenance Procedure}
+
+Algorithm~\ref{alg:ingest} sketches the reference ingestion procedure used by \engine. The procedure processes each StateObservation as an evidence update rather than as a direct overwrite of the current state. It first locates the state atoms and active valid-time intervals to which the observation may apply. It then updates the maintained view according to the observation polarity: support evidence strengthens an existing interval, contradict evidence revises confidence or status and may close or split an interval, and correction evidence replaces or repairs a previous claim. When an observation refers to an earlier event time but arrives later, \engine\ records a transaction-time revision so that later queries can distinguish what the system knew before and after the late evidence arrived.
+The pseudocode is not a required implementation for systems under test. A submitted system may use SQL scans, log replay, materialized views, retrieval indexes, rules, learned memory, or hybrids. The purpose of Algorithm~\ref{alg:ingest} is to make explicit the data-management operations that \bench\ stresses: matching observations to state atoms, maintaining valid-time intervals, preserving transaction-time history, tracking support and contradict evidence, and refreshing task-derived views used by goal, precondition, state-diff, uncertainty, and failure-localization queries. Thus, \engine\ serves as an interpretable reference point for the benchmark without constraining the representation choices of future systems.
+
+
+
+\begin{algorithm}[!t]
+\caption{Reference ingestion procedure in \engine.}
+\label{alg:ingest}
+\footnotesize
+\begin{algorithmic}[1]
+\REQUIRE StateObservation $o$, maintained view $V$
+\ENSURE Updated maintained view $V$
+\STATE $A \leftarrow$ state atoms matching $o.predicate$ and $o.arguments$
+\STATE $I \leftarrow$ active intervals for $A$ at $o.event\_time$
+\IF{$o.polarity$ supports an interval in $I$}
+    \STATE Add $o$ to support evidence of the matched interval
+    \STATE Update interval confidence and status
+\ELSIF{$o.polarity$ contradicts an interval in $I$}
+    \STATE Add $o$ to contradict evidence of the matched interval
+    \STATE Revise confidence and status
+    \STATE Close, split, or mark the interval if required by the conflict
+\ELSIF{$o.polarity$ corrects a previous claim}
+    \STATE Apply the correction to affected valid-time intervals
+    \STATE Record replaced evidence in the revision history
+\ELSE
+    \STATE Insert a new interval for the observed state atom starting at $o.event\_time$
+    \STATE Initialize confidence, status, and support evidence from $o$
+\ENDIF
+\IF{$o.arrival\_time > o.event\_time$}
+    \STATE Append a transaction-time revision for the affected state atoms
+\ENDIF
+\STATE Refresh indexes on episode, predicate, arguments, valid time, and transaction time
+\STATE Refresh affected task-derived views
+\RETURN $V$
+\end{algorithmic}
+\end{algorithm}
+
+
+
+\subsection{Baselines and Fair-Comparison Rules}
+
+The reported evaluation compares \engine\ with two transparent baselines. \emph{Recall Memory} retrieves related observations and answers from retrieved evidence without maintaining an explicit temporal task-state view. \emph{Temporal Log} stores the observation log and evaluates temporal queries over the log, but does not materialize the full set of task-derived views maintained by \engine. These baselines are intentionally auditable: their role is to test whether \bench\ distinguishes retrieval-style memory, log-based temporal lookup, and explicit temporal state-view maintenance.
+
+All systems are evaluated under the same public inputs: task specifications, observation streams, query sets, and metadata. They must not read hidden timelines, hidden answer sets, or private perturbation labels. They may use external libraries, database engines, indexes, learned components, or rule systems, but all predictions must be emitted in the same QueryAnswer format. A single evaluator computes exact accuracy, value accuracy, status accuracy, coverage, structured-answer metrics, and efficiency metrics.
+This shared protocol is what turns \bench\ from a data collection into an EAB benchmark. The stream, queries, hidden answers, and metrics are fixed; the system implementation is the only moving part. As a result, differences in reported performance can be attributed to the state-maintenance strategy rather than to different inputs, different labels, or different scoring code.
+
+\subsection{Reporting Protocol}
+
+Each run report records the public artifact identifier, stream name, system name and version, execution mode, hardware, random seed when applicable, preprocessing time, update time, query time, and output coverage. Accuracy and efficiency are reported separately. A system that answers accurately by scanning the full public stream for every query is different from a system that maintains a materialized view online; both are valid under \bench, but they expose different accuracy-efficiency trade-offs.
+The reported runs use the same reporting template for all baselines. This is important for benchmark reproducibility: a small change in stream order, query filtering, hidden-answer version, or schema validation can invalidate comparisons even when each individual system runs successfully. \bench\ therefore fixes the public artifact, hidden oracle, prediction schema, evaluator version, and metric definitions for every reported run.
+

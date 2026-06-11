@@ -1,0 +1,106 @@
+
+\section{Benchmark Generation and Artifacts}
+\label{sec:generation}
+
+\subsection{Generation Pipeline}
+
+The generation pipeline starts from task specifications and simulator-grounded episode sources. It extracts semantic state changes from simulator truth, normalizes them into hidden timeline events, generates clean StateObservation streams, injects perturbations to produce stress streams, constructs query sets, derives hidden answer sets, and builds a sanitized public package. Each stage writes a manifest or validation report so that the benchmark can be rebuilt, audited, and compared across releases.
+
+The hidden timeline is the anchor of the artifact. It records task-state transitions from which both public observations and hidden answers are derived. Clean observations are public evidence records generated from the same timeline. Perturbed observations preserve task structure while introducing stream defects that a maintenance system must handle. Query generation then samples state checks, bitemporal as-of probes, provenance queries, full-episode diffs, uncertainty-set queries, precondition checks, failure-localization queries, and task-goal checks.
+This pipeline enforces the public/hidden boundary. Hidden timelines, answer sets, and perturbation provenance are retained for evaluation and analysis, but they are not included in the public package. Systems under test receive only task specifications, public observation streams, query specifications, metadata, manifests, and validation files.
+
+\begin{table}[!t]
+\caption{Reported \bench\ artifact profile.}
+\label{tab:artifact}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begingroup
+\rowcolors{2}{gray!4}{white}
+\begin{tabular}{@{}p{0.58\linewidth}r@{}}
+\toprule
+\rowcolor{gray!15}
+\textbf{Item} & \textbf{Count or status} \\
+\midrule
+\multicolumn{2}{@{}l}{\textit{Scale}} \\
+Episodes & 570 \\
+Activities & 36 \\
+Task families & 4 \\
+Target predicates & 11 \\
+Task specifications & 570 \\
+Clean observations & 2,856,815 \\
+Hard mixed observations & 2,797,127 \\
+Queries & 5,848 \\
+Primary public stream & \texttt{hard\_mixed} \\
+\midrule
+\multicolumn{2}{@{}l}{\textit{Validation}} \\
+Validation errors & 0 \\
+Public validation status & \textsc{Pass} \\
+Query semantics audit & \textsc{Pass} \\
+Answer schema validation & \textsc{Pass} \\
+\bottomrule
+\end{tabular}
+\endgroup
+\end{table}
+
+\subsection{Query Generation and Selection}
+
+The query generator is tied to hidden timeline events and task goal specifications. It first constructs a candidate pool from task-relevant state changes, target predicates, and goal predicates. Candidate probes include \texttt{CHECK\_STATE} queries at target valid times, paired \texttt{AS\_OF\_STATE} queries with transaction times before and after the relevant observation window, \texttt{WHY\_STATE} provenance probes, episode-level \texttt{STATE\_DIFF} queries, and initial/final \texttt{CHECK\_GOAL} queries. The paired transaction-time probes test whether systems respect information availability rather than answering historical queries from final hindsight.
+
+The reported hard split filters this candidate pool into the public workload shown in Table~\ref{tab:query-distribution}. It keeps the temporal and provenance-heavy probes, keeps one episode-level \texttt{STATE\_DIFF}, \texttt{FIND\_UNCERTAIN\_STATES}, \texttt{CHECK\_PRECONDITION}, and \texttt{FAILURE\_LOCALIZATION} query per episode, and down-samples easier point-state and goal probes to 120 \texttt{CHECK\_STATE} and 120 \texttt{CHECK\_GOAL} queries. This two-stage design keeps the final public query set smaller than the full candidate pool while preserving temporal, set-valued, task-derived, and failure-analysis workloads.
+
+The workload is therefore task-linked rather than randomly sampled over arbitrary predicate/time combinations. Queries target states that matter to task progress: object states, relation changes, material states, transitions, preconditions, and goals. For analysis, the generator records hidden links from queries to the timeline events or goal predicates that motivated them. These links are not exposed to systems under test, but they let the evaluator group errors by transition type, predicate family, goal predicate, or perturbation source.
+
+\subsection{Perturbation Injection}
+
+Perturbations are injected after clean streams are generated. Missing-observation perturbations remove evidence near selected state transitions. Temporal-disorder perturbations shift arrival times or reorder observations while preserving event-time references. Low-confidence perturbations lower confidence without necessarily changing the observed value. Conflict perturbations introduce observations whose polarity or value contradicts the hidden state. The hard mixed stream combines these effects and serves as the primary stress stream in the reported artifact.
+
+The perturbation design is not meant to mimic every possible sensor failure. Its purpose is to create controlled failure modes that correspond to data-management challenges. Missing evidence tests whether a system can represent unknown or stale states. Temporal disorder tests bitemporal repair. Low confidence tests confidence propagation and calibration. Conflict tests evidence handling and status semantics. Mixed streams test whether systems remain robust when these issues co-occur.
+Perturbations are applied with deterministic seeds and written to hidden manifests. The public package exposes the resulting observation stream but does not reveal which observations were removed, downgraded, delayed, or injected. This design supports two levels of reporting. Main results compare public stream regimes such as clean versus hard mixed. Diagnostic analysis can additionally attribute failures to missing evidence, temporal disorder, low confidence, or contradiction without turning the public task into a perturbation-label reading problem.
+
+\subsection{Current Main Artifact}
+
+Table~\ref{tab:artifact} summarizes the artifact used in this paper, \texttt{public\_final\_570\_hard\_v1}. It contains 570 simulator-grounded episodes across 36 BEHAVIOR/OmniGibson activities and 5,848 hard queries. The clean stream contains 2,856,815 observations, and the hard mixed stream contains 2,797,127 observations. Public-artifact validation, query-semantics audit, and answer-schema validation all report \textsc{Pass}. These counts characterize the release as a controlled simulator-grounded benchmark for temporal task-state maintenance, not as a claim of full real-world robot deployment coverage.
+
+The query distribution emphasizes temporal and provenance-heavy state maintenance. \texttt{AS\_OF\_STATE} and \texttt{WHY\_STATE} form the two largest query families, followed by one episode-level structured query from each of \texttt{STATE\_DIFF}, \texttt{FIND\_UNCERTAIN\_STATES}, \texttt{CHECK\_PRECONDITION}, and \texttt{FAILURE\_LOCALIZATION}. The artifact also includes smaller samples of \texttt{CHECK\_STATE} and \texttt{CHECK\_GOAL} probes. The target predicates cover object unary state, material state, containment, and contact configuration, including \texttt{open}, \texttt{covered}, \texttt{inside}, \texttt{cooked}, \texttt{toggled\_on}, \texttt{temperature}, \texttt{attached}, \texttt{frozen}, \texttt{max\_temperature}, \texttt{hot}, and \texttt{on\_fire}.
+
+\begin{table}[!t]
+\caption{Reported query distribution in the main artifact.}
+\label{tab:query-distribution}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begingroup
+\rowcolors{2}{gray!4}{white}
+\begin{tabular}{@{}p{0.58\linewidth}rr@{}}
+\toprule
+\rowcolor{gray!15}
+\textbf{Query family} & \textbf{Count} & \textbf{Share} \\
+\midrule
+\texttt{AS\_OF\_STATE} & 1,772 & 30.3\% \\
+\texttt{WHY\_STATE} & 1,556 & 26.6\% \\
+\texttt{STATE\_DIFF} & 570 & 9.7\% \\
+\texttt{FIND\_UNCERTAIN\_STATES} & 570 & 9.7\% \\
+\texttt{CHECK\_PRECONDITION} & 570 & 9.7\% \\
+\texttt{FAILURE\_LOCALIZATION} & 570 & 9.7\% \\
+\texttt{CHECK\_STATE} & 120 & 2.1\% \\
+\texttt{CHECK\_GOAL} & 120 & 2.1\% \\
+\midrule
+\textbf{Total} & \textbf{5,848} & \textbf{100.0\%} \\
+\bottomrule
+\end{tabular}
+\endgroup
+\end{table}
+
+\subsection{Validation, Scope Limits, and Reproducibility}
+
+The public package is validated before evaluation. Release validation verifies the task specifications, query rows, public observation streams, manifests, schema conformance, and absence of answer leakage in public files. The reported release validates 570 task specifications, 5,848 query rows, and the primary hard mixed stream with 0 validation errors. The artifact also records horizon splits for interpretation: 540 short controlled episodes and 30 long state-chain episodes.
+
+Two scope limits are deliberately kept visible. First, the main artifact isolates temporal view maintenance from low-level robot control. Second, it uses structured simulator-derived observations rather than raw perception outputs as its correctness foundation. These choices make the benchmark reproducible and diagnostically clean: failures can be attributed to temporal state maintenance rather than to detector quality, controller robustness, simulator rollout, or task policy. Low-level rollout and perception-derived streams are outside the main score; the correctness claim is state-view maintenance given public observation streams.
+
+The artifact identifier encodes the release lineage and hard-split role. The reported artifact, \texttt{public\_final\_570\_hard\_v1}, is therefore not an anonymous directory name, but a compact description of the benchmark package used by the reported experiments. Manifests record task specifications, stream files, query sets, answer sets, validation reports, and profile summaries. A reproduction run verifies that these manifests agree with the paper tables before running baselines.
+
+The public release includes manifests, validation scripts, baseline runners, predictions, and evaluator outputs for reproducing the reported results. It is available as version v1.0 at \url{https://github.com/TheShadowFliesAway/EviStateBench-ICDE2027-Artifact}.
+

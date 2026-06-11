@@ -1,0 +1,140 @@
+\relax 
+\citation{srivastava2022behavior}
+\citation{li2024behavior1k}
+\citation{savva2019habitat,szot2021habitat}
+\citation{kolve2017ai2thor}
+\citation{puig2018virtualhome}
+\citation{padmakumar2022teach}
+\citation{majumdar2024openeqa}
+\citation{shridhar2020alfred}
+\citation{snodgrass1999developing,jensen1999temporal}
+\citation{babcock2002models}
+\citation{gupta1995maintenance,zhuge1995view}
+\citation{aggarwal2009uncertain,green2007provenance,cheney2009provenance}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{}\protected@file@percent }
+\citation{erling2015ldbc,iosup2016ldbc}
+\citation{khelifati2023tsmbench}
+\citation{qi2025finbench}
+\citation{malekpour2026sqlmorph}
+\citation{najafi2025beacon}
+\citation{mu2025aqp}
+\@writefile{toc}{\contentsline {section}{\numberline {II}Motivation and Benchmark Scope}{2}{}\protected@file@percent }
+\newlabel{sec:motivation}{{II}{2}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-A}}A Running Task-State Example}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-B}}What the Benchmark Evaluates}{2}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Benchmark positioning. Existing embodied benchmarks evaluate task execution, simulation, instruction following, question answering, or memory recall. EviStateBench\ isolates temporal task-state view maintenance from imperfect observation streams.}}{3}{}\protected@file@percent }
+\newlabel{tab:related-benchmarks}{{I}{3}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-C}}What the Benchmark Deliberately Excludes}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-D}}Benchmark Requirements}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {III}Problem Definition}{3}{}\protected@file@percent }
+\newlabel{sec:problem}{{III}{3}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Episodes and Hidden State Timelines}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Public Evidence Streams and Logical Views}{3}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Query workloads in EviStateBench.}}{4}{}\protected@file@percent }
+\newlabel{tab:query-workloads}{{II}{4}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}Queries and Answer Schema}{4}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces QueryAnswer fields and evaluator role.}}{4}{}\protected@file@percent }
+\newlabel{tab:answer-schema}{{III}{4}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-D}}Answer Normalization and Scoring Semantics}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IV}EviStateBench Benchmark Design}{5}{}\protected@file@percent }
+\newlabel{sec:benchmark}{{IV}{5}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Benchmark Package and Artifact Boundary}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Workload Axes}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Perturbation Regimes}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}Evaluation Modes}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-E}}Evaluation Metrics}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {V}Benchmark Generation and Artifacts}{6}{}\protected@file@percent }
+\newlabel{sec:generation}{{V}{6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Generation Pipeline}{6}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Reported EviStateBench\ artifact profile.}}{6}{}\protected@file@percent }
+\newlabel{tab:artifact}{{IV}{6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Query Generation and Selection}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Perturbation Injection}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Current Main Artifact}{7}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Reported query distribution in the main artifact.}}{7}{}\protected@file@percent }
+\newlabel{tab:query-distribution}{{V}{7}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Validation, Scope Limits, and Reproducibility}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Reference Engine and Experimental Protocol}{8}{}\protected@file@percent }
+\newlabel{sec:protocol}{{VI}{8}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}EviStateDB as a Reference Baseline}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-B}}Maintenance Procedure}{8}{}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Reference ingestion procedure in EviStateDB.}}{8}{}\protected@file@percent }
+\newlabel{alg:ingest}{{1}{8}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-C}}Baselines and Fair-Comparison Rules}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-D}}Reporting Protocol}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Evaluation and Analysis}{9}{}\protected@file@percent }
+\newlabel{sec:evaluation}{{VII}{9}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-A}}Artifact Characterization}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-B}}Hard-Split Difficulty}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-C}}Long State Chains}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-D}}Baseline Results}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-E}}Failure and Difficulty Diagnostics}{9}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Benchmark artifact profile. EviStateBench\ covers 570 simulator-grounded episodes over 36 activities, four task-state families, and 11 target predicates. The hard mixed stream stresses target evidence and shifts answer availability from mostly known clean answers to a mixture of known, unknown, uncertain, conflicting, and not-applicable answers.}}{10}{}\protected@file@percent }
+\newlabel{fig:artifact-profile}{{1}{10}}
+\@writefile{toc}{\contentsline {section}{\numberline {VIII}Lessons, Limitations, and Artifact Availability}{10}{}\protected@file@percent }
+\newlabel{sec:discussion}{{VIII}{10}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VIII-A}}Lessons from the Benchmark Design}{10}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VIII-B}}Limitations}{10}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VIII-C}}Artifact Availability}{10}{}\protected@file@percent }
+\citation{srivastava2022behavior}
+\citation{li2024behavior1k}
+\citation{savva2019habitat,szot2021habitat}
+\citation{kolve2017ai2thor}
+\citation{puig2018virtualhome}
+\citation{padmakumar2022teach}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Hard-split mechanism and query difficulty profile. The hard stream keeps only a minority of target simulator-state observations as direct evidence, while downgrading or dropping the rest. The resulting workload emphasizes temporal and provenance queries and produces graded known, unknown, uncertain, and conflicting answer conditions across target predicates.}}{11}{}\protected@file@percent }
+\newlabel{fig:hard-profile}{{2}{11}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Aggregated long state-chain templates. The 30-episode long subset adds multi-stage temporal maintenance cases, such as actuator, temperature, hot, cooked, and frozen state chains, to the larger short-transition benchmark.}}{11}{}\protected@file@percent }
+\newlabel{fig:long-chain}{{3}{11}}
+\@writefile{toc}{\contentsline {section}{\numberline {IX}Related Work}{11}{}\protected@file@percent }
+\newlabel{sec:related}{{IX}{11}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IX-A}}Embodied Task and Simulation Benchmarks}{11}{}\protected@file@percent }
+\citation{shridhar2020alfred}
+\citation{majumdar2024openeqa}
+\citation{snodgrass1999developing,jensen1999temporal}
+\citation{babcock2002models,garofalakis2016data}
+\citation{gupta1995maintenance,zhuge1995view}
+\citation{green2007provenance,cheney2009provenance,aggarwal2009uncertain,dalvi2007efficient}
+\citation{erling2015ldbc,iosup2016ldbc}
+\citation{khelifati2023tsmbench}
+\citation{qi2025finbench}
+\citation{malekpour2026sqlmorph}
+\citation{najafi2025beacon}
+\citation{mu2025aqp}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Baseline results on the final hard split. The upper heatmap reports query-type exact accuracy, the lower-left panel reports structured answer metrics, and the lower-right panel reports p95 per-query runtime from prediction outputs. All methods cover the full 5,848-query workload.}}{12}{}\protected@file@percent }
+\newlabel{fig:baseline-results}{{4}{12}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Difficulty analysis by answer status and predicate. Recall memory degrades across answer statuses and target predicates, while explicit temporal-state baselines largely solve \texttt  {AS\_OF\_STATE} and \texttt  {WHY\_STATE}.}}{12}{}\protected@file@percent }
+\newlabel{fig:failure-diagnostics}{{5}{12}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IX-B}}Temporal, Stream, and Provenance Data Management}{12}{}\protected@file@percent }
+\bibstyle{IEEEtran}
+\bibdata{refs}
+\bibcite{srivastava2022behavior}{1}
+\bibcite{li2024behavior1k}{2}
+\bibcite{savva2019habitat}{3}
+\bibcite{szot2021habitat}{4}
+\bibcite{kolve2017ai2thor}{5}
+\bibcite{puig2018virtualhome}{6}
+\bibcite{padmakumar2022teach}{7}
+\bibcite{majumdar2024openeqa}{8}
+\bibcite{shridhar2020alfred}{9}
+\bibcite{snodgrass1999developing}{10}
+\bibcite{jensen1999temporal}{11}
+\bibcite{babcock2002models}{12}
+\bibcite{gupta1995maintenance}{13}
+\bibcite{zhuge1995view}{14}
+\bibcite{aggarwal2009uncertain}{15}
+\bibcite{green2007provenance}{16}
+\bibcite{cheney2009provenance}{17}
+\bibcite{erling2015ldbc}{18}
+\bibcite{iosup2016ldbc}{19}
+\bibcite{khelifati2023tsmbench}{20}
+\bibcite{qi2025finbench}{21}
+\bibcite{malekpour2026sqlmorph}{22}
+\bibcite{najafi2025beacon}{23}
+\bibcite{mu2025aqp}{24}
+\bibcite{garofalakis2016data}{25}
+\bibcite{dalvi2007efficient}{26}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IX-C}}Experiment, Analysis, and Benchmark Papers}{13}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {X}Conclusion}{13}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{13}{}\protected@file@percent }
+\gdef \@abspage@last{13}

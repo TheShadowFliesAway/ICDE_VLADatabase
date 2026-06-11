@@ -1,0 +1,106 @@
+
+\section{Problem Definition}
+\label{sec:problem}
+
+\subsection{Episodes and Hidden State Timelines}
+
+An episode $e$ is an execution instance of a task specification. A task specification defines the relevant objects, task-state predicates, initial conditions, goal conditions, and task-level metadata. Let $\mathcal{P}$ be the set of task-state predicates, such as \texttt{open}, \texttt{inside}, \texttt{toggled\_on}, \texttt{covered}, \texttt{cooked}, \texttt{temperature}, \texttt{frozen}, and \texttt{attached}. A state atom has the form $p(\mathbf{a})=v$, where $p\in\mathcal{P}$, $\mathbf{a}$ is a tuple of object identifiers or values, and $v$ is a Boolean, categorical, or numeric value.
+For each episode, the generator constructs a hidden state timeline
+\begin{equation}
+    H_e = \langle h_1,\ldots,h_m\rangle ,
+\end{equation}
+where each event $h_i$ records a state atom, its value, and either a valid-time interval or a transition time derived from simulator truth and the task specification. Hidden timelines are not part of the public input. They are used only to derive hidden answer sets for evaluation.
+
+\begin{table}[!t]
+\caption{Query workloads in \bench.}
+\label{tab:query-workloads}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2.4pt}
+\renewcommand{\arraystretch}{1.13}
+\begingroup
+\rowcolors{2}{gray!4}{white}
+\begin{tabular}{@{}p{0.31\linewidth}p{0.28\linewidth}p{0.33\linewidth}@{}}
+\toprule
+\rowcolor{gray!15}
+\textbf{Query family} & \textbf{Main input} & \textbf{Evaluated capability} \\
+\midrule
+\texttt{CHECK\_STATE} & Predicate, arguments, valid time & Point state lookup over task predicates \\
+\texttt{AS\_OF\_STATE} & Predicate, valid time, transaction time & Bitemporal availability and repair \\
+\texttt{WHY\_STATE} & Predicate, time, evidence scope & Provenance and evidence support \\
+\texttt{STATE\_DIFF} & Scope, start time, end time & Change-set maintenance over an episode \\
+\texttt{CHECK\_GOAL} & Goal spec, valid time & Task-derived goal view correctness \\
+\texttt{FIND\_UNCERTAIN\_STATES} & Episode and state scope & Set-valued uncertainty tracking \\
+\texttt{CHECK\_PRECONDITION} & Task state and precondition scope & Task-derived precondition reasoning \\
+\texttt{FAILURE\_LOCALIZATION} & Goal subset and state scope & Failed-goal state localization \\
+\bottomrule
+\end{tabular}
+\endgroup
+\end{table}
+
+\subsection{Public Evidence Streams and Logical Views}
+
+The public input is a sequence of StateObservations. Each observation is an evidence record
+\begin{equation}
+\begin{aligned}
+o = (&obs\_id, episode\_id, event\_time, arrival\_time, source,\\
+     &kind, predicate, arguments, value, confidence,\\
+     &polarity, evidence\_ref, metadata).
+\end{aligned}
+\end{equation}
+The \emph{event time} is the time in the episode to which the observation refers. The \emph{arrival time} is the time at which the system receives the observation. The two may differ, which creates the need for transaction-time semantics. The \emph{polarity} indicates whether the observation supports, contradicts, or corrects a state claim. The \emph{evidence reference} links the observation to an artifact item, such as a frame identifier, trajectory identifier, source record, or simulator-derived annotation.
+Observation streams can be clean or perturbed. Clean streams contain simulator-derived evidence with minimal injected noise. Perturbed streams introduce missing observations, temporal disorder, low-confidence evidence, and contradictions. The reported release includes a target-aware hard mixed stream that combines these issues and serves as the primary stress condition.
+
+The event-time/arrival-time distinction is central. If an observation with $event\_time=10$ arrives at $arrival\_time=40$, then a system answering at transaction time 20 should not be credited for using it. The same system answering at transaction time 50 may use that observation to repair the maintained view. Thus, valid time describes the modeled world, while transaction time describes information availability. In embodied streams, this mismatch arises naturally from delayed model inference, batch perception, communication delays, and post-hoc task-monitor updates.
+A \tsv\ is the logical object being evaluated. For an episode, it can be viewed as a maintained relation
+\begin{equation}
+\begin{aligned}
+V = (&state\_id, episode\_id, predicate, arguments, value,\\
+     &valid\_start, valid\_end, transaction\_start,\\
+     &transaction\_end, confidence, support, contradict,\\
+     &status, revision\_history).
+\end{aligned}
+\end{equation}
+Valid-time fields record when a state is believed to hold in the world. Transaction-time fields record when the system knew or stored that belief. The support and contradict sets record evidence used in the maintained answer. A system under test is not required to materialize $V$ or expose it. The relation defines the benchmark semantics, not an implementation requirement.
+
+\subsection{Queries and Answer Schema}
+
+A query $q$ is a public request over an episode, a predicate or task-goal specification, and one or more time parameters. The main query families are shown in Table~\ref{tab:query-workloads}. Hidden answer sets are generated from hidden timelines and task specifications. For bitemporal queries, the hidden answer depends on both valid time and transaction time.
+
+
+A predicted answer follows the QueryAnswer schema in Table~\ref{tab:answer-schema}. The schema is deliberately small: it contains the query identifier, an answer status, a normalized value or change set when applicable, an optional confidence score, and optional evidence identifiers. The status can be \texttt{known}, \texttt{unknown}, \texttt{uncertain}, \texttt{conflict}, or \texttt{n/a}. This lets the evaluator distinguish a wrong Boolean value from a system that correctly reports that the public stream does not justify a definite answer. In the reported artifact, clean answers are mostly \texttt{known}, while hard-mixed answers include \texttt{unknown}, \texttt{uncertain}, and \texttt{conflict} states.
+
+\begin{table}[!t]
+\caption{QueryAnswer fields and evaluator role.}
+\label{tab:answer-schema}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.13}
+\begingroup
+\rowcolors{2}{gray!4}{white}
+\begin{tabular}{@{}p{0.18\linewidth}p{0.74\linewidth}@{}}
+\toprule
+\rowcolor{gray!15}
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\texttt{query\_id} & Public query identifier used to join predictions with hidden answers \\
+\texttt{status} & One of \texttt{known}, \texttt{unknown}, \texttt{uncertain}, \texttt{conflict}, or \texttt{n/a} \\
+\texttt{value} & Boolean, categorical, numeric, or structured predicate value \\
+\texttt{change\_set} & Added, removed, or changed states for \texttt{STATE\_DIFF} \\
+\texttt{confidence} & Optional system confidence for calibration and error analysis \\
+\texttt{evidence} & Optional support or contradict observation identifiers \\
+\bottomrule
+\end{tabular}
+\endgroup
+\end{table}
+
+
+\subsection{Answer Normalization and Scoring Semantics}
+
+The evaluator normalizes hidden and predicted answers before scoring. Predicate names, object identifiers, and categorical values are canonicalized using public task metadata. Boolean values are mapped to a fixed true/false representation. Numeric values are compared with predicate-specific tolerances when such tolerances are defined; otherwise, exact normalized matching is used. Change sets are represented as sets of normalized state atoms with before/after values, so systems are not penalized for output ordering.
+
+Correctness is not merely value equality. For \texttt{CHECK\_STATE}, a prediction is exactly correct when both status and value match the hidden answer, or when both answers mark the state as not applicable. For \texttt{AS\_OF\_STATE}, the same rule is applied after enforcing the requested transaction time. This prevents hindsight leakage: a system may know the final world state but still be wrong about what information was available at an earlier transaction time. For \texttt{STATE\_DIFF}, exact match requires the full change set to match, while diff F1 gives partial credit for overlapping changed atoms. For \texttt{CHECK\_GOAL}, exact match checks the task-level status and goal truth value, while goal-predicate F1 measures predicate-level agreement.
+Status semantics are scored explicitly because they are central to imperfect streams. A system should not be forced to guess a Boolean value when public evidence is insufficient. Conversely, it should not be rewarded for answering \texttt{unknown} on every difficult query. The evaluator therefore reports coverage and status accuracy alongside value metrics. This exposes the trade-off between overconfident value prediction and conservative uncertainty reporting.
+Evidence fields are optional in the core score, but they are retained for audit and why-style workloads. When a system emits support or contradict observation identifiers, the evaluator can measure overlap with oracle evidence. The reported main score does not require evidence citation so that simple baselines remain comparable, but evidence references remain first-class fields in the public stream and answer schema because provenance is part of the benchmark design.
+

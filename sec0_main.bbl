@@ -133,15 +133,16 @@ A.~Iosup, T.~Hegeman, W.~L. Ngai, S.~Heldens, A.~Prat-P{\'e}rez, T.~Manhardt,
   2016.
 
 \bibitem{khelifati2023tsmbench}
-A.~Khelifati, F.~Boukli~Hacene, Y.~Chabchoub, A.~Dign{\"o}s, J.~Gamper, and
-  G.~Montoya, ``{TSM-Bench}: Benchmarking time series database systems for
-  monitoring applications,'' \emph{Proceedings of the VLDB Endowment}, vol.~16,
-  no.~11, pp. 3363--3376, 2023.
+A.~Khelifati, M.~Khayati, A.~Dign{\"o}s, D.~Difallah, and P.~Cudr{\'e}-Mauroux,
+  ``Tsm-bench: benchmarking time series database systems for monitoring
+  applications,'' \emph{Proceedings of the VLDB Endowment}, vol.~16, no.~11,
+  pp. 3363--3376, 2023.
 
 \bibitem{qi2025finbench}
-L.~Qi, L.~Chen, T.~Weng, B.~Hu, J.~X. Yu, and X.~Zhou, ``{LDBC} finbench
-  transaction workload,'' \emph{Proceedings of the VLDB Endowment}, vol.~18,
-  no.~11, pp. 3007--3020, 2025.
+S.~Qi, B.~Tong, J.~Hu, H.~Lin, Y.~Pang, W.~Yuan, S.~Lyu, Z.~Guo, K.~Huang,
+  X.~Ba \emph{et~al.}, ``The ldbc financial benchmark: Transaction workload,''
+  \emph{Proceedings of the VLDB Endowment}, vol.~18, no.~9, pp. 3007--3020,
+  2025.
 
 \bibitem{malekpour2026sqlmorph}
 M.~Malekpour, M.~Riahi, M.~Lamothe, and A.~Mhedhbi, ``{SQLMorph}: Query

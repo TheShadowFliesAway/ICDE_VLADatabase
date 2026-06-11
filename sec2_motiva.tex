@@ -1,0 +1,58 @@
+
+\begin{table*}[!t]
+\caption{Benchmark positioning. Existing embodied benchmarks evaluate task execution, simulation, instruction following, question answering, or memory recall. \bench\ isolates temporal task-state view maintenance from imperfect observation streams.}
+\label{tab:related-benchmarks}
+\centering
+\scriptsize
+\newcommand{\yes}{\checkmark}
+\newcommand{\no}{--}
+\newcommand{\partly}{Partial}
+\setlength{\tabcolsep}{2.4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{ccc c c c c}
+\toprule
+\textbf{Benchmark family} & \textbf{Primary target} & \makecell{\textbf{Temporal}\\\textbf{state queries}} & \makecell{\textbf{Event/}\\\textbf{arrival time}} & \makecell{\textbf{Perturbed}\\\textbf{observations}} & \makecell{\textbf{Task-derived}\\\textbf{views}} & \makecell{\textbf{Hidden}\\\textbf{oracle}} \\
+\midrule
+BEHAVIOR / BEHAVIOR-1K & Household task execution and simulation & \partly & \no & \no & \partly & Simulator truth \\
+ALFRED & Instruction following & \no & \no & \no & Task success & Demo labels \\
+OpenEQA & Embodied question answering & Episodic context & \no & \no & NL answers & Human/LLM scoring \\
+Retrieval memory evals & Recall from stored observations & Limited & \no & Usually no & \no & Dataset labels \\
+\rowcolor{gray!10}
+\bench & Temporal task-state view maintenance & \yes & \yes & \yes & \yes & Simulator truth + specs \\
+\bottomrule
+\end{tabular}
+\vspace{0.3em}
+\begin{flushleft}
+\scriptsize
+\textit{Note:} \checkmark\ indicates that the property is explicitly evaluated as a first-class scoring target; ``Partial'' indicates that the property may appear in task definitions or simulator state but is not the primary evaluation target.
+\end{flushleft}
+\end{table*}
+
+
+\section{Motivation and Benchmark Scope}
+\label{sec:motivation}
+
+\subsection{A Running Task-State Example}
+
+Consider a household task in which an agent must put a cup into a cabinet and then close the cabinet. The task can be described by predicates over objects and time: the cup should become \texttt{inside(cup,cabinet)}, the cabinet should eventually be not \texttt{open(cabinet)}, and the robot should no longer be \texttt{grasped(robot,cup)}. A simulator or action script can provide the underlying state changes, but a deployed system observes only a stream of partial evidence. A relation detector may report \texttt{inside(cup,cabinet)} with moderate confidence after the place action. A visual detector may miss the cup once it becomes occluded. An action log may assert that the place operation succeeded. A later observation may arrive after the close action and revise an earlier belief.
+This example separates three objects that are often conflated. The \emph{world state} is what actually holds at a valid time. The \emph{observation evidence} is what a source claims, possibly late, incomplete, or incorrect. The \emph{maintained task-state view} is what a system can answer after ingesting the public stream. \bench\ evaluates the third object against hidden answers derived from the first object, while exposing only the second object as public input.
+
+\subsection{What the Benchmark Evaluates}
+
+\bench\ evaluates systems that maintain queryable temporal views of task state. A benchmark instance provides a task specification, an observation stream, and a query set. A system outputs predicted answers, and the evaluator scores them against hidden answer sets. The system is not required to expose its internal state representation. It may use a log scan, a materialized view, relational tables, a retrieval index, rules, a learned memory module, or a hybrid architecture. The only required output is the standardized predicted QueryAnswer.
+The workload targets eight query families. \texttt{CHECK\_STATE} and \texttt{CHECK\_GOAL} are compact point probes over task predicates and goal conditions. \texttt{AS\_OF\_STATE} asks what would be known for a valid time at a specified transaction time, thereby testing information-availability semantics under late evidence. \texttt{WHY\_STATE} asks for supporting or contradicting evidence. \texttt{STATE\_DIFF} asks which states changed between two valid-time points or intervals. \texttt{FIND\_UNCERTAIN\_STATES}, \texttt{CHECK\_PRECONDITION}, and \texttt{FAILURE\_LOCALIZATION} expose set-valued uncertainty, task-precondition reasoning, and failure-analysis views.
+
+\subsection{What the Benchmark Deliberately Excludes}
+
+\bench\ is not a robot-control benchmark. It does not score low-level manipulation success, exploration policy, path planning, visual perception quality, or language-grounded action execution as primary outcomes. These components are important, but including them in the main score would make failures difficult to attribute. An accuracy difference could reflect a detector, controller, simulator rollout, or planner rather than the temporal state-maintenance method being evaluated.
+The main artifact therefore uses simulator-grounded hidden timelines and controlled public observation streams. This choice is a scope restriction, not a claim that perception and control are unimportant. It makes the stream, queries, hidden answers, and evaluation semantics stable enough to evaluate temporal view maintenance reproducibly. Action-source and perception-source gaps are reported as limitations; the main correctness claim is over the controlled data-management workload.
+
+\subsection{Benchmark Requirements}
+
+The running example yields five benchmark requirements.
+\first \emph{R1: Temporal semantics.} The benchmark must ask about current and historical task states, not only final task success.
+\second \emph{R2: Information availability.} It must separate valid time from arrival time, so that late evidence can repair a previous state without giving systems credit for knowing it before it arrived.
+\third \emph{R3: Evidence sensitivity.} It must represent support and contradict observations, because task states can be uncertain or conflicting under imperfect evidence.
+\fourth \emph{R4: Task-derived views.} It must evaluate predicates in the context of task goals, preconditions, changes, and failure explanations, not only isolated object attributes.
+\fifth \emph{R5: Reproducibility.} It must provide public inputs, hidden answers, validation reports, and a shared evaluator so that systems are compared under the same workload and scoring semantics.
+Table~\ref{tab:related-benchmarks} positions these requirements against related benchmark families. The point is not that prior benchmarks are deficient for their own goals. Rather, they target different layers of the embodied stack. \bench\ fills the data-management layer between observation-producing embodied systems and task executors that need queryable, auditable state.
