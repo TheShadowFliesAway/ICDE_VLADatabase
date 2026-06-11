@@ -3,7 +3,6 @@
 
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{algorithm}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
@@ -12,11 +11,12 @@
 \usepackage{multirow}
 \usepackage{url}
 
-\newcommand{\sys}{LifelongSceneDB}
-
+\newcommand{\bench}{EviStateBench}
+\newcommand{\engine}{EviStateDB}
+\newcommand{\tsv}{TemporalStateView}
 \begin{document}
 
-\title{LifelongSceneDB: A Probabilistic Bitemporal Scene-Graph Store for Embodied Agents}
+\title{[Experiment, Analysis, and Benchmark] EviStateBench: Evaluating Temporal Task-State View Maintenance over Embodied Observation Streams}
 
 \author{\IEEEauthorblockN{Anonymous Authors}
 \IEEEauthorblockA{Paper under submission}}
@@ -24,256 +24,539 @@
 \maketitle
 
 \begin{abstract}
-Embodied agents operating in dynamic human environments require long-term memory to search for objects, resume interrupted tasks, restore previous states, collaborate with humans, and explain their decisions. Existing embodied memory systems typically rely on vector memories, 3D snapshots, or task-specific scene graphs, but lack database-level semantics for time, uncertainty, provenance, and hybrid querying. We present \sys, a memory database system that models noisy embodied observations as probabilistic bitemporal scene-graph facts. \sys maintains valid time and transaction time for object and relation facts, attaches confidence and provenance to each claim, and supports current, as-of, change, evidence, and task-oriented top-k queries. It further provides online maintenance mechanisms for conflicting and delayed observations, together with lightweight hybrid indexes for temporal, graph, spatial, confidence, and provenance predicates. We evaluate \sys on dynamic embodied memory workloads and downstream object-search and previous-state restoration tasks. The results will show whether database-level memory semantics improve query correctness under noisy and delayed observations, reduce query latency compared with scan-based baselines, and improve embodied task efficiency.
+Embodied agents increasingly produce streams of observations from perception modules, action logs, trackers, task monitors, and simulators. These streams are noisy, delayed, out of order, incomplete, and sometimes contradictory, yet downstream task execution often needs an auditable view of task state: whether an object is inside a container, whether a device is open or toggled on, whether a goal predicate currently holds, and how that answer changes under late evidence. Existing embodied benchmarks emphasize task completion, navigation, question answering, or memory recall; they do not isolate the data-management problem of maintaining temporal task-state views from imperfect observation streams.
+
+We introduce \bench, an Experiment, Analysis, and Benchmark contribution for temporal task-state view maintenance over embodied observation streams. \bench\ derives hidden state timelines from simulator truth and task specifications, emits public StateObservation streams, provides workloads for bitemporal state, provenance, change-set, uncertainty, precondition, failure-localization, and goal queries, and evaluates predicted answers against hidden answer sets. The reported artifact contains 570 simulator-grounded episodes over 36 activities, 5,848 hard queries, 2.86M clean observations, and 2.80M hard mixed observations, with public-artifact, query-semantics, and answer-schema validation passing without errors. We also provide \engine, a reference baseline engine that maintains bitemporal task-state views with support and contradict evidence. Experiments with recall-memory, temporal-log, and \engine\ baselines show that the benchmark separates retrieval memory, temporal-log lookup, and materialized temporal-state maintenance: exact accuracy ranges from 25.2\% to 75.6\%, while structured, set-valued, and task-derived queries remain challenging.
 \end{abstract}
 
 \begin{IEEEkeywords}
-embodied AI, lifelong memory, temporal database, probabilistic data, scene graph, provenance, query processing
+benchmarking, temporal data management, stream processing, embodied AI, task state, provenance, uncertain data
 \end{IEEEkeywords}
 
 \section{Introduction}
 
-Embodied agents are increasingly expected to operate in long-horizon, dynamic human environments. In a household environment, a cup may be moved from a table to a sink by a human, a drawer may be opened and later closed, and a robot may resume a task after charging. To act efficiently, the agent must reason not only about the current camera view, but also about what it observed before, what has changed, which observations support a memory claim, and whether the current belief is reliable enough to act on.
+Embodied agents observe the world through imperfect streams. A robot may receive a detector output that a cabinet is open, a relation estimate that a cup is inside the cabinet, an action log that a place operation succeeded, and a later visual observation that appears to contradict the earlier relation. These observations arrive from different sources, at different times, and with different reliability. Some refer to the current world state; others arrive late and describe an earlier event. Some are missing because an object was occluded. Some are wrong because perception failed. A task executor nevertheless needs to ask database-like questions: does the goal hold now, what did the agent know at a previous transaction time, which state changed during the episode, and which evidence supports or contradicts an answer?
 
-Recent embodied memory systems have shown that memory is essential for embodied question answering, navigation, exploration, and manipulation. OpenEQA evaluates whether embodied agents can answer open-vocabulary questions from episodic memory or active exploration~\cite{openeqa}. 3D-Mem and related snapshot-based memories store compact visual memories for embodied exploration and reasoning~\cite{yang20253dmem}. DynaMem maintains dynamic spatio-semantic memory for open-world mobile manipulation~\cite{yu2024dynamem}. GraphPad uses mutable scene graphs and navigation logs as inference-time structured memory for embodied agents~\cite{graphpad}. Long-horizon VLN work such as MGDM further demonstrates that memory is critical for multi-stage embodied navigation~\cite{song2025lhvln}.
+Current embodied benchmarks and simulators provide important foundations, but they do not directly evaluate this maintenance problem. BEHAVIOR describes household activities with predicate-logic initial and goal conditions~\cite{srivastava2022behavior}, and BEHAVIOR-1K extends the scale and simulation environment for long-horizon mobile manipulation~\cite{li2024behavior1k}. Habitat, AI2-THOR, VirtualHome, and TEACh provide embodied environments, task programs, rearrangement, or interactive instruction-following settings~\cite{savva2019habitat,szot2021habitat,kolve2017ai2thor,puig2018virtualhome,padmakumar2022teach}. OpenEQA evaluates open-vocabulary embodied question answering over episodic memory and active exploration~\cite{majumdar2024openeqa}. ALFRED evaluates grounded instruction following for everyday tasks~\cite{shridhar2020alfred}. These benchmarks expose task, language, perception, and interaction challenges, but the primary scoring target is not whether a data system can maintain a temporal task-state view with valid-time semantics, transaction-time repair, provenance, and query workloads over public observation streams.
 
-However, these systems usually treat memory as a task-specific module rather than as a database object with explicit query semantics. Vector or retrieval memories can find related frames, but they do not naturally distinguish the current state from a past state. Static scene graphs can represent object relations, but they collapse history and cannot answer when a relation changed. Dynamic embodied memories may update spatial representations, but they rarely provide database-level semantics for valid time, transaction time, uncertain facts, claim-level provenance, and hybrid temporal-graph-spatial-vector queries.
+This distinction matters for data engineering. In a task such as placing a cup into a cabinet and closing the door, the relevant maintained states may include \texttt{inside(cup,cabinet)}, \texttt{open(cabinet)}, and \texttt{grasped(robot,cup)}. The query \emph{was the cup inside the cabinet after the place action?} is not a retrieval query over similar frames. It is a temporal state query over evidence. The query \emph{what changed between the beginning and end of the episode?} is not a single symbolic-state lookup. It is a state-diff query over a maintained view. The query \emph{would the system have known this before the delayed observation arrived?} requires event time and arrival time to be separated. These requirements connect embodied observation streams to temporal databases, stream processing, incremental view maintenance, uncertain data, and provenance~\cite{snodgrass1999developing,jensen1999temporal,babcock2002models,gupta1995maintenance,zhuge1995view,aggarwal2009uncertain,green2007provenance,cheney2009provenance}.
 
-This paper formulates \emph{lifelong embodied memory management} as a data engineering problem. The input is a stream of noisy, delayed, and potentially conflicting embodied observations. The output is a persistent memory database that supports robot-facing queries such as: where is the mug now, where was it before breakfast, what changed in the kitchen, which frames support this claim, and should the robot re-observe before acting? These queries are not merely diagnostic: they are used by embodied agents to reduce blind search, restore previous states, resume interrupted tasks, and avoid unsafe actions under uncertainty.
+We introduce \bench, a data-management benchmark for evaluating temporal task-state view maintenance over embodied observation streams. A \bench\ task instance provides public inputs, including task specifications, observation streams, queries, and metadata. It withholds hidden timelines and answer sets used by the evaluator. Systems under test may use any internal representation: retrieval memory, temporal logs, SQL scans, rules, materialized views, learned memory, or a hybrid. They are compared only by their predicted query answers under a shared evaluator. This public/hidden split is central: the oracle is derived from simulator truth and task specifications, not from any submitted system.
 
-We propose \sys, a probabilistic bitemporal scene-graph store for embodied agents. \sys represents each object or relation claim as a fact with valid time, transaction time, confidence, and provenance. It ingests noisy observation streams, incrementally maintains object and relation facts, resolves conflicting evidence through confidence updates, and supports current, as-of, change, provenance, and task-oriented top-k queries. To make these queries efficient, \sys maintains lightweight hybrid indexes over object identities, temporal intervals, regions, confidence values, and provenance links.
+We also provide \engine, a reference baseline engine. \engine\ maintains a \tsv\ with valid-time intervals, transaction-time revisions, support and contradict evidence, confidence, and task-derived views. It is useful for diagnosing what a temporal view-maintenance engine can do under the benchmark, but it is not the benchmark oracle. This separation lets \bench\ evaluate \engine\ alongside simpler baselines such as latest observation, temporal-log scan, SQL scan, and retrieval-style memory.
 
-This work makes the following contributions:
+This paper makes four contributions.
 \begin{itemize}
-    \item We formulate lifelong embodied memory management as a data engineering problem over noisy and delayed embodied observation streams.
-    \item We propose a probabilistic bitemporal scene-graph data model that represents dynamic world facts with valid time, transaction time, confidence, and provenance.
-    \item We design online maintenance rules for supporting observations, conflicting observations, fact expiration, and evidence tracking.
-    \item We provide robot-facing query interfaces and lightweight hybrid indexes for current, as-of, change, provenance, uncertain top-k, and task-oriented queries.
-    \item We design a dynamic embodied memory workload and evaluate \sys against vector memory, static scene graphs, latest-wins temporal memory, and ablated variants on both database-level queries and downstream embodied tasks.
+    \item We formulate temporal task-state view maintenance over embodied observation streams as a data-management benchmark problem.
+    \item We define the \bench\ artifact boundary, observation schema, query workloads, perturbation regimes, answer schema, and evaluator semantics.
+    \item We describe a simulator-grounded generator that produces hidden state timelines, clean and perturbed public observation streams, query sets, hidden answer sets, and validation reports.
+    \item We provide \engine\ as a reference baseline engine and define an experimental protocol for comparing systems under shared public inputs and hidden oracle answers.
 \end{itemize}
 
-\section{Motivation}
+The intended EAB contribution is therefore not a new perception model, planner, or robotics controller. It is the benchmark object: a standardized artifact, a query workload, an evaluator, a public/hidden boundary, and an analysis protocol for systems that maintain temporal task-state views. This mirrors database benchmark and EAB papers that introduce evaluation frameworks and diagnostic workloads to expose trade-offs that are hard to see in one-off experiments~\cite{erling2015ldbc,iosup2016ldbc,khelifati2023tsmbench,qi2025finbench,malekpour2026sqlmorph,najafi2025beacon,mu2025aqp}.
 
-\subsection{Why Embodied Agents Need Database Memory}
+\section{Motivation and Benchmark Scope}
+\label{sec:motivation}
 
-A long-term embodied memory database is useful only when past states support current tasks. We focus on four representative task families.
+\subsection{A Running Task-State Example}
 
-\textbf{Temporal object search.} A user may ask the agent to find ``the mug I used earlier.'' If the mug is no longer visible, the robot should query where it was last seen, whether it was later moved, and which location is currently most likely.
+Consider a household task in which an agent must put a cup in a cabinet and close the cabinet. The task is naturally described by predicates over objects and time: the cup should be inside the cabinet, the cabinet should eventually be closed, and the robot should no longer be grasping the cup. A simulator or action script can provide the hidden state changes, but a deployed system observes a stream of partial evidence. A relation detector may report \texttt{inside(cup,cabinet)} with moderate confidence after the place action. A visual detector may miss the cup after it becomes occluded. An action log may assert that the place action succeeded. A later observation may arrive after the close action and repair an earlier belief.
 
-\textbf{Previous-state restoration.} A user may ask the robot to restore a kitchen to its state before breakfast. This requires as-of queries over the previous world state and change queries that identify objects moved after the target time.
+This example separates three notions that are often collapsed. First, \emph{world state} is what actually holds in the simulator at a valid time. Second, \emph{observation evidence} is what a source claims, possibly late or incorrectly. Third, \emph{maintained task-state view} is what a system can answer after ingesting the public stream. \bench\ evaluates the third object against hidden answers derived from the first object, using only the second object as public input.
 
-\textbf{Long-horizon task resumption.} If a robot pauses a cleaning task to recharge, it must recover which subgoals have been completed and which objects or containers have already been manipulated.
+\subsection{What the Benchmark Evaluates}
 
-\textbf{Evidence-aware explanation and safety.} If the robot plans to grasp an object whose location confidence is low, it should re-observe or ask a human. If it reports that a cup is in the sink, it should expose which observations support that claim.
+\bench\ evaluates systems that maintain queryable temporal views of task state. A system is given a task specification, an observation stream, and a query set. It outputs predicted answers. The evaluator checks those answers against hidden answer sets. The system is not required to expose its internal state view; it may implement a log scan, a materialized view, a database table, a retrieval index, or a learned model. The only required output is the standardized predicted QueryAnswer.
 
-These scenarios require more than retrieving related frames. They require a database that distinguishes current and historical states, tracks uncertainty, exposes evidence, and supports efficient hybrid queries.
+The benchmark focuses on eight query families. \texttt{AS\_OF\_STATE} asks what would be known for a valid time at a specified transaction time. \texttt{WHY\_STATE} asks which evidence supports the maintained state. \texttt{STATE\_DIFF} asks which states changed between two valid-time points or intervals. \texttt{FIND\_UNCERTAIN\_STATES}, \texttt{CHECK\_PRECONDITION}, and \texttt{FAILURE\_LOCALIZATION} expose set-valued uncertainty, task-precondition, and failure-analysis views. \texttt{CHECK\_STATE} and \texttt{CHECK\_GOAL} provide compact point-state and goal-state probes.
 
-\subsection{Running Example}
+\subsection{What the Benchmark Deliberately Excludes}
 
-Consider the following episode:
-\begin{center}
-\begin{tabular}{ll}
+\bench\ is not a robot-control benchmark. It does not score low-level manipulation success, exploration policy, path planning, or visual perception quality as primary outcomes. Those components are important, but mixing them into the main benchmark would make it difficult to attribute failures to temporal state-view maintenance. The main artifact therefore uses simulator-grounded hidden timelines and controlled public observation streams. Action-source and perception-source gaps are stated as scope limits; the main correctness claims are made over the controlled data-management workload.
+
+This scope is intentionally narrow. A benchmark for view maintenance must make the stream, queries, hidden answers, and evaluation semantics stable. Otherwise, an accuracy difference may reflect perception quality, controller robustness, simulator physics, or task policy rather than the state-maintenance method being evaluated. \bench\ isolates the data-management layer so that systems can compare maintenance strategies under the same public inputs.
+
+\subsection{Benchmark Requirements}
+
+The running example gives rise to five benchmark requirements. \emph{R1: temporal semantics.} The benchmark must ask about both current and historical task states, not only final task success. \emph{R2: information availability.} It must separate valid time from arrival time so that late evidence can repair a previous state without pretending that the system knew it earlier. \emph{R3: evidence sensitivity.} It must include support and contradict observations because task states can become uncertain or conflicting. \emph{R4: task-derived views.} It must evaluate predicates in the context of task goals, not only isolated object attributes. \emph{R5: reproducibility.} It must provide public inputs, hidden answers, validation reports, and a shared evaluator.
+
+Table~\ref{tab:related-benchmarks} positions these requirements against related benchmark families. The point is not that prior benchmarks are deficient for their own goals; rather, they target different layers of the embodied stack. \bench\ fills the data-management layer between observation-producing embodied systems and task executors that need queryable, auditable state.
+
+\begin{table*}[!t]
+\caption{Benchmark positioning. Related embodied benchmarks provide task, simulation, language, or memory-recall evaluation, while \bench\ isolates temporal task-state view maintenance.}
+\label{tab:related-benchmarks}
+\centering
+\scriptsize
+{\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}p{0.13\textwidth}p{0.16\textwidth}p{0.11\textwidth}p{0.11\textwidth}p{0.12\textwidth}p{0.11\textwidth}p{0.10\textwidth}@{}}
 \toprule
-Time & Event \\
+Benchmark family & Primary target & Temporal state queries & Event/arrival time & Perturbed observations & Task-derived views & Hidden oracle \\
 \midrule
-08:00 & cup is on table \\
-08:05 & robot observes cup on table \\
-08:20 & human moves cup from table to sink \\
-08:25 & detector falsely reports cup on table \\
-08:30 & robot observes cup in sink \\
-08:40 & user asks the robot to bring the cup \\
+BEHAVIOR / BEHAVIOR-1K & Household task execution and simulation & Partial & No & No & Goal predicates & Simulator truth \\
+ALFRED & Instruction following & No & No & No & Task success & Demo labels \\
+OpenEQA & Embodied question answering & Episodic context & No & No & NL answers & Human/LLM scoring \\
+Retrieval memory evals & Recall from stored observations & Limited & No & Usually no & No & Dataset labels \\
+\bench & Temporal task-state view maintenance & Yes & Yes & Yes & Yes & Simulator truth + specs \\
 \bottomrule
 \end{tabular}
-\end{center}
-
-A vector memory may retrieve both table and sink observations; a static scene graph may only retain the latest state; a latest-wins temporal graph may be misled by the false detection. \sys maintains interval facts and evidence confidence, allowing it to answer that the cup is currently most likely in the sink, that it was on the table before 08:20, and that the sink claim is supported by observations around 08:30.
+}
+\end{table*}
 
 \section{Problem Definition}
+\label{sec:problem}
 
-\subsection{Observation Stream}
+\subsection{Episodes, Task Specifications, and Hidden Timelines}
 
-An embodied agent produces an observation stream $\mathcal{O}=\langle o_1,o_2,\ldots\rangle$. Each observation is a tuple
+An episode $e$ is an execution instance of a task specification. A task specification defines objects, predicates, initial conditions, goal conditions, and task-level metadata. Let $\mathcal{P}$ be the set of task-state predicates, such as \texttt{open}, \texttt{inside}, \texttt{toggled\_on}, \texttt{covered}, \texttt{cooked}, \texttt{temperature}, \texttt{frozen}, and \texttt{attached}. A state atom has the form $p(\mathbf{a})=v$, where $p\in\mathcal{P}$, $\mathbf{a}$ is a tuple of object identifiers or values, and $v$ is a Boolean, categorical, or numeric value.
+
+For each episode, the generator constructs a hidden state timeline
 \begin{equation}
-    o=(id,t_v,t_x,a,r,s,p,q,l,c,e),
+    H_e = \langle h_1,\ldots,h_m\rangle,
 \end{equation}
-where $t_v$ is the event time in the world, $t_x$ is the arrival or ingestion time, $a$ is the agent, $r$ is the region, $s$ is the subject object, $p$ is a predicate, $q$ is the object or value, $l$ is the location, $c\in[0,1]$ is the observation confidence, and $e$ is an evidence reference such as a frame, sensor, or model output.
+where each event $h_i$ records a state atom, a value, and a valid-time interval or transition time derived from simulator truth and task specifications. Hidden timelines are not part of the public input. They are used to generate hidden answer sets.
 
-The stream may contain missed detections, false positives, relation errors, object identity switches, delayed observations, and out-of-order arrivals. \sys does not solve perception; it manages the uncertain outputs of perception systems.
+\subsection{StateObservation Streams}
 
-\subsection{Embodied Memory Facts}
-
-A memory fact is a tuple
+The public input stream is a sequence of StateObservations. Each observation is a tuple
 \begin{equation}
-    f=(s,p,q,[v_s,v_e),[x_s,x_e),\rho,E,\sigma),
+\begin{split}
+o = (&obs\_id, episode\_id, event\_time, arrival\_time, source,\\
+     &kind, predicate, arguments, value, confidence,\\
+     &polarity, evidence\_ref, metadata).
+\end{split}
 \end{equation}
-where $(s,p,q)$ is a scene-graph claim, $[v_s,v_e)$ is the valid-time interval, $[x_s,x_e)$ is the transaction-time interval, $\rho$ is the fact confidence, $E$ is provenance, and $\sigma$ is the fact status such as active, expired, or contradicted.
+The \emph{event time} is the time to which the observation refers in the episode. The \emph{arrival time} is the time at which the system receives the observation. The two may differ, which creates the need for transaction-time semantics. The \emph{polarity} indicates whether the observation supports, contradicts, or corrects a state claim. The \emph{evidence reference} links to the evidence item in the artifact, such as a frame identifier, trajectory identifier, source record, or simulator-derived annotation.
 
-Valid time models when the fact is believed to hold in the world. Transaction time models when the database knew or stored the fact. This distinction is important for delayed observations and retrospective corrections.
+An observation stream can be clean or perturbed. Clean streams reflect simulator-derived observations with minimal injected noise. Perturbed streams inject missing observations, temporal disorder, low confidence, and contradictions. The reported release includes a target-aware hard mixed stream that combines several issues and acts as the primary stress test.
 
-\subsection{Query Workload}
+The distinction between event time and arrival time is central. If an observation with $event\_time=10$ arrives at $arrival\_time=40$, then a system answering at transaction time 20 should not be credited for using it, while a system answering at transaction time 50 may use it to repair the maintained view. This is the benchmark analogue of bitemporal data management: valid time describes the modeled world, and transaction time describes information availability. In embodied streams, this mismatch arises naturally from delayed model inference, batch perception, communication delays, and post-hoc task-monitor updates.
 
-We study six query classes.
+\subsection{Temporal Task-State Views}
 
-\textbf{Current queries} ask for the best current state of an object or relation. \textbf{As-of queries} ask for the state at a past valid time. \textbf{Change queries} identify objects or relations that changed in a region or time range. \textbf{Provenance queries} return observations that support or contradict a claim. \textbf{Uncertain top-k queries} return ranked candidate locations or relations with confidence. \textbf{Task-oriented queries} combine semantic, temporal, spatial, and confidence constraints to support robot planning.
+A \tsv\ is the conceptual object being evaluated. For an episode, it is a maintained relation
+\begin{equation}
+\begin{split}
+V = (&state\_id, episode\_id, predicate, arguments, value,\\
+     &valid\_start, valid\_end, transaction\_start,\\
+     &transaction\_end, confidence, support, contradict,\\
+     &status, revision\_history).
+\end{split}
+\end{equation}
+Valid time records when a state is believed to hold in the world. Transaction time records when a system knew or stored that belief. Support and contradict sets record evidence used in the maintained answer. A system under test is not required to materialize $V$ or expose it. \tsv\ is the logical target that lets the benchmark define query semantics.
 
-\section{LifelongSceneDB Data Model}
+\subsection{Queries and Answers}
 
-\subsection{Probabilistic Bitemporal Scene Graph}
+A query $q$ is a public request over an episode, a predicate or goal specification, and one or more time parameters. The main query types are shown in Table~\ref{tab:query-workloads}. A predicted answer contains a query identifier, an answer status, a value or change set, an optional confidence, and optional evidence. Hidden answer sets are generated from the hidden timeline and task specification. For bitemporal queries, the answer depends on both valid time and transaction time.
 
-\sys represents memory as a probabilistic bitemporal scene graph. Nodes correspond to objects, rooms, surfaces, containers, agents, or abstract task entities. Edges correspond to relations such as \emph{on}, \emph{inside}, \emph{near}, \emph{reachable}, \emph{seen-by}, and \emph{moved-to}. Each edge is a memory fact with valid time, transaction time, confidence, and provenance.
-
-\begin{table}[t]
-\caption{Schema of an embodied memory fact.}
-\label{tab:fact-schema}
+\begin{table}[!t]
+\caption{Query workloads in \bench.}
+\label{tab:query-workloads}
 \centering
-\begin{tabular}{ll}
+\footnotesize
+\begin{tabular}{@{}p{0.23\linewidth}p{0.30\linewidth}p{0.34\linewidth}@{}}
 \toprule
-Field & Meaning \\
+Query & Input & Evaluated capability \\
 \midrule
-subject, predicate, object & Scene-graph claim \\
-valid start/end & Time interval in the world \\
-transaction start/end & Time interval in the database \\
-confidence & Belief score of the claim \\
-status & Active, expired, or contradicted \\
-provenance & Supporting and contradicting observations \\
-spatial info & Region, surface, or 3D location \\
-embedding & Optional semantic representation \\
+\texttt{CHECK\_STATE} & predicate, arguments, valid time & Point state lookup over task predicates \\
+\texttt{AS\_OF\_STATE} & predicate, valid time, transaction time & Bitemporal availability and repair \\
+\texttt{STATE\_DIFF} & scope, start time, end time & Change-set maintenance over an episode \\
+\texttt{CHECK\_GOAL} & task goal spec, valid time & Task-derived goal view correctness \\
+\texttt{WHY\_STATE} & predicate, time, evidence scope & Provenance and evidence support \\
+\texttt{UNCERTAIN} & episode and state scope & Set-valued uncertainty tracking \\
+\texttt{PRECONDITION} & task state and precondition scope & Task-derived precondition reasoning \\
+\texttt{FAILURE\_LOC} & goal subset and state scope & Failed-goal state localization \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Robot-Facing Interfaces}
+The answer schema is deliberately small. A QueryAnswer contains the query identifier, an answer status, a normalized value or change set when applicable, a confidence score when the system provides one, and optional evidence identifiers. The status can be \texttt{known}, \texttt{unknown}, \texttt{uncertain}, \texttt{conflict}, or \texttt{n/a}. This lets the evaluator distinguish a wrong Boolean value from a system that correctly reports that the public stream does not justify a definite answer. In the reported artifact, clean answers are mostly \texttt{known}, while hard-mixed answers include \texttt{uncertain}, \texttt{unknown}, and \texttt{conflict} states.
 
-Although \sys can expose declarative queries, robot planners interact with it through task-facing APIs:
-\begin{itemize}
-    \item \texttt{locate\_current(desc, constraints)} returns the most likely current state.
-    \item \texttt{locate\_asof(desc, time)} returns the state at a valid time.
-    \item \texttt{detect\_changes(region, range)} returns changed objects and relations.
-    \item \texttt{get\_evidence(claim)} returns supporting and contradicting observations.
-    \item \texttt{topk\_locations(desc, k)} returns uncertain candidate locations.
-    \item \texttt{should\_reobserve(claim, threshold)} decides whether memory confidence is sufficient for action.
-\end{itemize}
+\begin{table}[!t]
+\caption{QueryAnswer fields and evaluator role.}
+\label{tab:answer-schema}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.25\linewidth}p{0.62\linewidth}@{}}
+\toprule
+Field & Meaning \\
+\midrule
+\texttt{query\_id} & Public query identifier used for joining predictions to hidden answers \\
+\texttt{status} & \texttt{known}, \texttt{unknown}, \texttt{uncertain}, \texttt{conflict}, or \texttt{n/a} \\
+\texttt{value} & Boolean, categorical, numeric, or structured predicate value \\
+\texttt{change\_set} & Added, removed, or changed states for \texttt{STATE\_DIFF} \\
+\texttt{confidence} & Optional system confidence used for calibration and MAE \\
+\texttt{evidence} & Optional support/contradict observation identifiers \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\section{Online Memory Maintenance}
+\subsection{Answer Normalization and Correctness}
 
-\sys ingests observations online and updates memory facts. The maintenance procedure first identifies candidate facts related to the observation, then updates supporting facts, decays conflicting facts, inserts new facts when needed, and updates provenance and indexes.
+The evaluator normalizes both hidden answers and predicted answers before scoring. Predicate names, object identifiers, and categorical values are canonicalized using the public task metadata. Boolean values are mapped to a fixed true/false representation. Numeric values are compared with predicate-specific tolerances when a tolerance is defined; otherwise exact normalized value matching is used. Change sets are represented as sets of normalized state atoms with before/after values, which prevents systems from receiving different scores because of output ordering.
 
-For a supporting observation with confidence $c$, we update a fact confidence $\rho$ as
-\begin{equation}
-    \rho' = 1-(1-\rho)(1-c).
-\end{equation}
-For a conflicting observation, we decay the existing fact as
-\begin{equation}
-    \rho' = \rho(1-\gamma c),
-\end{equation}
-where $\gamma$ controls the strength of contradiction. If confidence falls below an expiration threshold, \sys closes the old valid interval and marks the fact as contradicted or expired.
+Correctness is not only value equality. For \texttt{CHECK\_STATE}, a prediction is exactly correct when the status and value match the hidden answer, or when both answers mark the state as not applicable. For \texttt{AS\_OF\_STATE}, the evaluator applies the same value rule after filtering evidence by transaction time. This is the critical check against hindsight leakage: an answer can be right for the final world state but wrong for the information that was available at the requested transaction time. For \texttt{STATE\_DIFF}, exact match requires the full change set to match, while diff F1 gives partial credit for overlapping changed atoms. For \texttt{CHECK\_GOAL}, exact match checks the task-level status and goal truth value, while goal-predicate F1 measures the predicate-level explanation.
 
-\begin{algorithm}[t]
-\caption{IngestObservation}
-\label{alg:ingest}
+Status semantics are scored explicitly because they are central to imperfect streams. A system should not be forced to guess a Boolean value when the public evidence is insufficient. Conversely, a system should not hide behind \texttt{unknown} for every difficult query. The evaluator therefore reports coverage and status accuracy alongside value metrics. A high-value but low-status system is useful when downstream components can tolerate overconfident answers; a lower-coverage system with accurate uncertainty may be preferable for safety-critical task monitoring. \bench\ exposes this trade-off rather than collapsing it into a single scalar.
+
+Evidence fields are optional in the core score, but they are retained for audit and why-style workloads. When a system emits support or contradict observation identifiers, the evaluator can measure whether the cited evidence overlaps with oracle evidence. The reported main score does not require evidence citation so that simple baselines remain comparable. The artifact nevertheless keeps evidence references in the public stream because provenance is part of the benchmark design.
+
+\section{EviStateBench Benchmark Design}
+\label{sec:benchmark}
+
+\subsection{Benchmark Package}
+
+\bench\ is a benchmark package consisting of public artifacts, hidden evaluator artifacts, and a shared evaluation protocol. The public artifacts contain task specifications, observation streams, query sets, metadata, manifests, validation reports, and build commands. The hidden evaluator artifacts contain the hidden state timelines and answer sets. Systems under test can read only the public package. Their predictions are scored by the evaluator, which reads both the predictions and hidden answers.
+
+\engine\ is evaluated by \bench; it does not generate the ground truth used to judge other systems. The oracle is constructed from simulator truth and task specifications. This distinction also makes the benchmark representation-agnostic: a retrieval-based system, a SQL-based system, a rule engine, and \engine\ can all submit the same QueryAnswer schema.
+
+The package is organized so that benchmark users can run three roles independently. A \emph{benchmark builder} can regenerate public and hidden artifacts from the pipeline manifests. A \emph{system developer} can download the public package, implement an answerer, and emit predictions. An \emph{evaluator} can score predictions against hidden answers. This separation is important for artifact review and public leaderboards: the system developer does not need access to any hidden timeline files to test parsing, run baselines, or validate prediction format.
+
+\subsection{Artifact Boundary and Leakage Control}
+
+The public artifact exposes the information that a deployed state-maintenance system could plausibly observe: task descriptions, state observations, query specifications, and metadata needed to parse them. It does not expose hidden timeline events, answer sets, or perturbation labels that would reveal the target answer. The evaluator can be run after a system writes predictions. This design follows the common benchmark pattern of public inputs and hidden labels, but applies it to temporal state-view maintenance rather than classification or retrieval.
+
+The public-artifact validation step checks that required manifests exist, query identifiers are well formed, observation streams are readable, task specifications align with query metadata, and answer leakage is absent from public files. In the reported artifact, validation reports 570 task specifications, 5,848 query rows, one primary hard mixed public stream, and 0 validation errors.
+
+The artifact boundary also defines what counts as a fair comparison. All systems receive the same public observation streams in the same order. They receive the same query set and task specifications. They may use external software libraries, database engines, or learned components, but they may not read hidden answer files, hidden timeline files, or perturbation annotations that reveal which observations were injected. This rule makes the benchmark compatible with both classical data-management systems and neural memory systems while keeping the evaluation target fixed.
+
+\subsection{Workload Axes}
+
+\bench\ varies several workload axes simultaneously. The main axes are query family, predicate family, episode horizon, stream regime, temporal position, and evidence status. Query family determines the answer shape. Predicate family determines whether the system is maintaining unary states, binary relations, numeric states, contact configurations, or material states. Episode horizon controls the length of the observation stream and the number of opportunities for stale or repaired state. Stream regime controls whether the public evidence is clean or perturbed. Temporal position distinguishes initial, transition-near, and final queries. Evidence status captures whether the public stream offers support, contradict evidence, both, or neither.
+
+\begin{table}[!t]
+\caption{Workload axes used to interpret benchmark results.}
+\label{tab:workload-axes}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.28\linewidth}p{0.58\linewidth}@{}}
+\toprule
+Axis & Examples and diagnostic purpose \\
+\midrule
+Query family & State check, as-of state, state diff, goal check \\
+Predicate family & Unary state, relation, numeric state, contact, material state \\
+Episode horizon & Short, medium, long episodes for scaling and drift analysis \\
+Stream regime & Clean, missing, temporal disorder, conflict, mixed \\
+Temporal position & Initial, transition-near, post-transition, final \\
+Evidence status & Supported, missing, contradicted, uncertain, conflicting \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These axes are not merely descriptive metadata. They determine how results should be read. A system that performs well on clean final-state checks may still fail on transition-near as-of queries. A system that handles Boolean unary predicates may not handle numeric temperature states or relation changes. A system that answers goals correctly on short episodes may degrade on long episodes because stale evidence accumulates. The evaluation therefore reports overall metrics together with query-family and stream-regime breakdowns.
+
+\subsection{Perturbation Regimes}
+
+Table~\ref{tab:perturbations} summarizes the regimes used in the benchmark design. The main release contains clean and hard mixed public streams. The broader protocol supports single-factor regimes for diagnosis, including missing observations, temporal disorder, low confidence, and explicit conflicts. The hard mixed stream is the main stress condition because embodied observation streams rarely contain a single isolated issue.
+
+\begin{table}[!t]
+\caption{Perturbation regimes and the data-management challenge they create.}
+\label{tab:perturbations}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.24\linewidth}p{0.34\linewidth}p{0.29\linewidth}@{}}
+\toprule
+Regime & Stream issue & Maintenance challenge \\
+\midrule
+Clean & Simulator-derived observations & Basic state-view construction \\
+Missing & Omitted evidence near transitions & Unknown and stale-state handling \\
+Temporal disorder & Delayed or out-of-order arrival & Valid-time and transaction-time repair \\
+Conflict & Support and contradict evidence coexist & Confidence and provenance tracking \\
+Mixed & Multiple issues combined & Robustness under realistic stream defects \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Data Model and Query Semantics}
+
+The important semantic choice is that observations are evidence, not final state. A state answer is produced by interpreting evidence over time. For \texttt{CHECK\_STATE}, the evaluator checks the value of a target state at a valid time. For \texttt{AS\_OF\_STATE}, the evaluator additionally constrains information availability by transaction time. For \texttt{STATE\_DIFF}, the answer is a change set over a scope. For \texttt{CHECK\_GOAL}, the answer is task-derived and can require multiple predicates. The same answer schema also supports provenance, uncertainty-set, precondition, and failure-localization workloads.
+
+\subsection{Online and Batch Evaluation Modes}
+
+The benchmark supports both online and batch evaluation modes. In online mode, a system ingests observations in arrival-time order and must answer queries at their declared transaction times. This mode best matches task monitors that operate during execution. In batch mode, a system may preprocess the full public stream but must still respect transaction-time constraints for \texttt{AS\_OF\_STATE} queries. Batch mode is useful for comparing database implementations and retrieval systems whose natural interface is offline.
+
+Both modes are valid, but they answer different performance questions. Online mode emphasizes update cost, state repair, and incremental view maintenance. Batch mode emphasizes query semantics and representation quality. The reported runs identify which mode each baseline uses. When both are available for a system, \bench\ reports preprocessing time separately from query time so that an offline scan is not confused with an online maintained view.
+
+\subsection{Evaluation Metrics}
+
+\bench\ reports both answer-level and task-view metrics. Exact accuracy checks whether the predicted structured answer matches the hidden answer for a query. Value accuracy ignores status mistakes when the value field is applicable. Status accuracy checks whether the system distinguishes \texttt{known}, \texttt{unknown}, \texttt{uncertain}, and \texttt{conflict}. \texttt{STATE\_DIFF} uses both exact change-set match and mean F1 over changed state atoms. \texttt{CHECK\_GOAL} reports satisfied accuracy and goal-predicate F1 so that a system can receive partial credit when it identifies some but not all satisfied or violated goal predicates.
+
+These metrics are intentionally diagnostic. A single global score would hide the differences between stale-state errors, transaction-time errors, status-calibration errors, and change-set errors. The evaluation therefore reports overall metrics, query-family breakdowns, and perturbation-regime breakdowns. For systems that emit confidence, \bench\ also reports confidence mean absolute error against hidden answer confidence where defined.
+
+\section{Benchmark Generation and Artifacts}
+\label{sec:generation}
+
+\subsection{Generation Pipeline}
+
+The generation pipeline begins with task specifications and simulator-grounded episode sources. It extracts semantic state changes from simulator truth, normalizes them into hidden timeline events, produces clean StateObservation streams, injects perturbations to produce stress streams, generates query sets, derives hidden answer sets, and builds a sanitized public package. Each step writes a manifest or report so that the benchmark can be rebuilt and audited.
+
+The hidden timeline is the anchor of the artifact. It records the task-state transitions from which both observations and answers are derived. Clean observations are public evidence records generated from the same timeline. Perturbed observations are public stress streams that preserve the task structure while introducing the stream defects that a maintenance system must handle. Query generation then samples state checks, bitemporal as-of probes, full-episode diffs, and task-goal checks.
+
+\subsection{Query Generation}
+
+The query generator is tied to hidden timeline events and task goal specifications. It first constructs a candidate query pool from target state changes and task goals. Candidate probes include \texttt{CHECK\_STATE} queries at target valid times, paired \texttt{AS\_OF\_STATE} queries whose transaction times fall before and after the relevant observation window, full-episode \texttt{STATE\_DIFF} queries, and initial/final \texttt{CHECK\_GOAL} queries. The transaction-time pair tests whether systems respect information availability rather than answering every historical query from final hindsight.
+
+The reported hard split then filters this candidate pool to form the public workload in Table~\ref{tab:query-distribution}. It keeps the temporal and provenance-heavy probes, keeps one episode-level \texttt{STATE\_DIFF}, \texttt{FIND\_UNCERTAIN\_STATES}, \texttt{CHECK\_PRECONDITION}, and \texttt{FAILURE\_LOCALIZATION} query per episode, and down-samples easy point-state and goal probes to 120 \texttt{CHECK\_STATE} and 120 \texttt{CHECK\_GOAL} queries. This two-stage design explains why the final public query counts are smaller than the full candidate pool while still preserving task-linked temporal, set-valued, and failure-analysis workloads.
+
+This generation strategy keeps the workload close to task semantics. The benchmark is not sampling arbitrary predicate/time combinations. It asks about states that matter to task progress: target object states, transitions, and goals. It also ensures that every query has a hidden answer derived from the same timeline used to produce public observations.
+
+The generator also records why each query exists. For example, a \texttt{CHECK\_STATE} query can be linked to the hidden event that changed the target atom, and a \texttt{CHECK\_GOAL} query can be linked to the goal predicates in the task specification. These links are hidden from systems under test but useful for analysis. They let the evaluator group errors by transition type, goal predicate, or perturbation source without leaking that information into the public package.
+
+\subsection{Perturbation Injection}
+
+Perturbations are injected after the clean stream is generated. Missing-observation perturbations remove evidence near selected state transitions. Temporal-disorder perturbations shift arrival times or reorder observations while preserving event-time references. Conflict perturbations introduce observations whose polarity or value contradicts the hidden state. Low-confidence perturbations lower confidence without necessarily changing the value. The hard mixed stream combines these effects and is used as the main stress stream in the reported public artifact.
+
+The perturbation design is not meant to mimic every real sensor failure. Its purpose is to create controlled failure modes that correspond to data-management challenges. Missing evidence tests whether a system can represent unknown states. Temporal disorder tests bitemporal repair. Conflict tests evidence handling and status semantics. Mixed streams test whether systems remain robust when these issues co-occur.
+
+Perturbations are applied with deterministic seeds and written to manifests. The public package does not reveal which observations were perturbed, but the hidden analysis package records perturbation provenance. This design allows two levels of reporting. The main paper reports public-regime results, such as clean versus hard mixed. A diagnostic analysis can additionally explain whether a failure was caused by missing evidence, temporal disorder, or contradiction. Keeping perturbation provenance hidden avoids turning the task into a label-reading exercise while still supporting benchmark debugging.
+
+\subsection{Current Main Artifact}
+
+Table~\ref{tab:artifact} reports the artifact used in this paper, \texttt{public\_final\_570\_hard\_v1}. It contains 570 simulator-grounded episodes across 36 BEHAVIOR/OmniGibson activities, with 5,848 hard queries. The clean stream contains 2,856,815 observations; the hard mixed stream contains 2,797,127 observations. Public-artifact validation, query-semantics audit, and answer-schema validation all report \texttt{PASS}. These counts mark the artifact as a controlled simulator-grounded benchmark for temporal task-state maintenance, not as a claim of full real-world robot deployment coverage.
+
+\begin{table}[!t]
+\caption{Reported \bench\ artifact profile.}
+\label{tab:artifact}
+\centering
+\footnotesize
+\begin{tabular}{lr}
+\toprule
+Item & Count or status \\
+\midrule
+Episodes & 570 \\
+Activities & 36 \\
+Task families & 4 \\
+Target predicates & 11 \\
+Task specifications & 570 \\
+Clean observations & 2,856,815 \\
+Hard mixed observations & 2,797,127 \\
+Queries & 5,848 \\
+Primary public stream & hard\_mixed \\
+Validation errors & 0 \\
+Public validation status & PASS \\
+Query semantics audit & PASS \\
+Answer schema validation & PASS \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The query distribution emphasizes temporal and provenance-heavy state maintenance: 1,772 \texttt{AS\_OF\_STATE} queries and 1,556 \texttt{WHY\_STATE} queries form the largest workload. The artifact also includes 570 \texttt{STATE\_DIFF}, 570 \texttt{FIND\_UNCERTAIN\_STATES}, 570 \texttt{CHECK\_PRECONDITION}, 570 \texttt{FAILURE\_LOCALIZATION}, 120 \texttt{CHECK\_STATE}, and 120 \texttt{CHECK\_GOAL} queries. The target predicates cover object unary state, material state, containment, and contact configuration, with 11 target predicates including \texttt{open}, \texttt{covered}, \texttt{inside}, \texttt{cooked}, \texttt{toggled\_on}, \texttt{temperature}, \texttt{attached}, \texttt{frozen}, \texttt{max\_temperature}, \texttt{hot}, and \texttt{on\_fire}.
+
+\begin{table}[!t]
+\caption{Reported query distribution in the main artifact.}
+\label{tab:query-distribution}
+\centering
+\footnotesize
+\begin{tabular}{@{}lr@{}}
+\toprule
+Query family & Count \\
+\midrule
+\texttt{AS\_OF\_STATE} & 1,772 \\
+\texttt{WHY\_STATE} & 1,556 \\
+\texttt{STATE\_DIFF} & 570 \\
+\texttt{FIND\_UNCERTAIN\_STATES} & 570 \\
+\texttt{CHECK\_PRECONDITION} & 570 \\
+\texttt{FAILURE\_LOCALIZATION} & 570 \\
+\texttt{CHECK\_STATE} & 120 \\
+\texttt{CHECK\_GOAL} & 120 \\
+\midrule
+Total & 5,848 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Validation and Known Limits}
+
+The public package is validated before evaluation. The release validation verifies 570 task specifications, 5,848 query rows, and the primary hard mixed observation stream. It reports no validation errors. The artifact also records horizon splits for interpretation: 540 short controlled episodes and 30 long state-chain episodes.
+
+Two limits are deliberately kept visible. First, the main artifact isolates temporal view maintenance from low-level robot control. Second, the main artifact uses structured simulator-derived observations rather than raw perception outputs as its correctness foundation. These choices make the benchmark reproducible and diagnostically clean. Low-level rollout and perception-derived streams are outside the main score; the correctness claim is state-view maintenance given public observation streams.
+
+The validation status should be read in this sense. The artifact passes public validation and is suitable for evaluating the target benchmark problem, while the release notes keep scope limits explicit. ICDE EAB papers are evaluated not only by whether the artifact exists, but also by whether its boundary is clear enough for other researchers to reproduce and interpret results.
+
+\subsection{Reproducibility Knobs}
+
+The artifact identifier encodes the release lineage and hard-split role. The reported artifact, \texttt{public\_final\_570\_hard\_v1}, is therefore not an anonymous directory name; it is a compact description of the benchmark package used by the reported experiments. Manifests record task specifications, stream files, query sets, answer sets, and validation reports.
+
+The generator writes manifests for task specifications, streams, queries, validation reports, and profile summaries. A reproduction run verifies that these manifests agree with the paper tables before running baselines. This is especially important for an EAB benchmark, because small inconsistencies in query counts or stream files can invalidate comparisons even when each individual system runs successfully. The artifact package includes \texttt{validate\_release.py}, \texttt{profile\_report.py}, and \texttt{build\_hard\_split.py} for release validation, profile regeneration, and hard-split construction; the baseline and figure packages include corresponding evaluation and plotting scripts for regenerating the reported results.
+
+\section{Reference Engine and Experimental Protocol}
+\label{sec:protocol}
+
+\subsection{EviStateDB as a Reference Baseline}
+
+\engine\ is a reference baseline engine for \bench. It ingests StateObservation streams and maintains a \tsv. For each state atom, it records valid-time intervals, transaction-time revisions, confidence, support evidence, contradict evidence, status, and revision history. It also derives task-facing views such as goal views, precondition views, state-diff views, uncertain-state views, and failure-analysis views when the query workload requires them.
+
+\engine\ is intentionally described as a baseline, not as the main benchmark contribution. The benchmark is designed to evaluate any system that can read the public artifacts and output QueryAnswers. \engine\ supplies one strong, interpretable data-management baseline that demonstrates how bitemporal repair and evidence tracking can be implemented.
+
+\engine\ stores an observation log and materializes state intervals indexed by episode, predicate, arguments, valid time, and transaction time. Its task-derived views are computed from the same maintained state intervals rather than from hidden answers. This makes \engine\ useful as a reference point for systems that wish to trade update cost for query speed. It also gives the benchmark a concrete implementation path for bitemporal repair, without forcing all systems to use the same representation.
+
+\subsection{Maintenance Sketch}
+
+Table~\ref{tab:ingest} sketches the reference ingestion logic. The actual implementation can vary, but the pseudocode exposes the operations that the benchmark is meant to stress: identifying relevant state atoms, deciding whether an observation supports or contradicts an existing view, revising valid-time intervals when late evidence arrives, recording transaction-time history, and retaining evidence for audit queries.
+
+\begin{table}[!t]
+\caption{Reference ingestion in \engine.}
+\label{tab:ingest}
+\centering
+\footnotesize
+\begin{minipage}{0.96\columnwidth}
 \begin{algorithmic}[1]
-\REQUIRE observation $o$, fact store $F$, indexes $I$
-\STATE candidates $\leftarrow$ lookup related facts using object and region indexes
-\FOR{each candidate fact $f$}
-    \IF{$o$ supports $f$}
-        \STATE update $f.confidence$ with support rule
-        \STATE add $o$ to supporting provenance of $f$
-    \ELSIF{$o$ conflicts with $f$}
-        \STATE decay $f.confidence$ with conflict rule
-        \STATE add $o$ to contradicting provenance of $f$
-        \IF{$f.confidence$ below threshold}
-            \STATE close $f.valid\_end$ at $o.event\_time$
-            \STATE mark $f$ as contradicted
-        \ENDIF
-    \ENDIF
-\ENDFOR
-\IF{no active fact explains $o$}
-    \STATE insert new fact with valid time $o.event\_time$ and transaction time $o.arrival\_time$
+\REQUIRE StateObservation $o$, maintained view $V$
+\STATE Locate candidate state atoms matching $o.predicate$ and $o.arguments$
+\IF{$o$ supports an active state interval}
+    \STATE Update confidence and add $o$ to support evidence
+\ELSIF{$o$ contradicts an active state interval}
+    \STATE Add $o$ to contradict evidence
+    \STATE Revise confidence and, if needed, close or split the valid interval
+\ELSE
+    \STATE Insert a new state interval starting at $o.event\_time$
 \ENDIF
-\STATE update temporal, object, region, confidence, and provenance indexes
+\IF{$o.arrival\_time$ is later than $o.event\_time$}
+    \STATE Record a transaction-time revision
+\ENDIF
+\STATE Refresh indexes and task-derived views affected by the state atom
 \end{algorithmic}
-\end{algorithm}
+\end{minipage}
+\end{table}
 
-\section{Query Processing and Indexing}
+\subsection{Baselines and Fair-Comparison Rules}
 
-\sys maintains lightweight hybrid indexes for the query workload:
-\begin{itemize}
-    \item an object index maps object identities or classes to fact identifiers;
-    \item a temporal index stores valid intervals for as-of and change queries;
-    \item a region index maps rooms or surfaces to active objects;
-    \item a confidence index supports top-k uncertain state queries;
-    \item a provenance index maps facts to supporting and contradicting observations.
-\end{itemize}
+The evaluation compares \engine\ with two transparent baselines. \emph{Recall Memory} retrieves related observations and answers from retrieved evidence without maintaining an explicit temporal task-state view. \emph{Temporal Log} keeps the observation log and evaluates temporal queries over the log, but does not materialize the full set of task-derived views maintained by \engine. These baselines are intentionally simple enough to audit; their role is to reveal whether the benchmark distinguishes retrieval-style memory, log-based temporal lookup, and explicit temporal state-view maintenance.
 
-The current prototype uses a rule-based planner. If a query specifies an object, the object index is applied first; if it specifies time, the temporal index filters valid intervals; if it specifies region, the region index filters spatial candidates; final candidates are ranked by confidence and optionally returned with provenance.
+All systems must use the same public task specifications, observation streams, query sets, and metadata. They must not read hidden timelines, hidden answer sets, or private perturbation labels. All systems submit predictions in the same QueryAnswer format. A single evaluator computes exact accuracy, status accuracy, value accuracy, change-set F1, goal-predicate F1, coverage, and efficiency metrics. This shared protocol is what turns \bench\ from a data collection into an EAB benchmark.
 
-\section{Experimental Evaluation}
+\begin{table}[!t]
+\caption{Primary systems and expected stress points.}
+\label{tab:baselines}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.24\linewidth}p{0.31\linewidth}p{0.31\linewidth}@{}}
+\toprule
+System & Representation & Expected weakness \\
+\midrule
+Recall memory & Retrieved evidence snippets & State diffs and goal views \\
+Temporal log & Append-only observations & Structured task-derived views \\
+\engine & Bitemporal state view & Update overhead and design complexity \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\subsection{Research Questions}
+\subsection{Reporting Protocol}
 
-Our evaluation is designed around four questions:
-\begin{itemize}
-    \item RQ1: Does \sys answer embodied memory queries more accurately than vector, static-graph, and latest-wins memory baselines?
-    \item RQ2: Is \sys robust to noisy and delayed observations?
-    \item RQ3: How much do bitemporal time, confidence, provenance, and indexing contribute?
-    \item RQ4: Does \sys improve downstream embodied object search and previous-state restoration?
-\end{itemize}
+Each run report records the public artifact identifier, stream name, system version, hardware, random seed where applicable, preprocessing time, update time, query time, and output coverage. Accuracy and efficiency are reported separately. A system that answers accurately by scanning the full observation stream for every query is different from a system that maintains a materialized view online; both are valid systems under \bench, but the trade-off is part of the EAB analysis.
 
-\subsection{Dynamic Memory Workload}
+The reported runs use the same reporting template for all baselines. This matters because benchmark papers often fail when each method is evaluated under slightly different assumptions. \bench\ fixes the stream, queries, hidden answers, and metrics; the system implementation is the only moving part.
 
-We generate synthetic dynamic embodied episodes over household-style scenes. Each episode contains objects, regions, observations, and events such as \texttt{MOVE}, \texttt{OPEN}, \texttt{CLOSE}, \texttt{HIDE}, \texttt{REVEAL}, \texttt{HUMAN\_MOVE}, and \texttt{ROBOT\_OBSERVE}. Ground-truth events are converted into noisy observation streams with missed detections, false detections, wrong locations, delayed arrivals, and out-of-order observations.
+\section{Evaluation and Analysis}
+\label{sec:evaluation}
 
-Queries and answers are generated from ground truth. A movement event such as \texttt{MOVE(cup, table, sink, 08:20)} produces current, as-of, change, and provenance queries. This lets us evaluate both database correctness and task usefulness with known answers.
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/figA_benchmark_profile.pdf}
+\caption{Benchmark artifact profile. \bench\ covers 570 simulator-grounded episodes over 36 activities, four task-state families, and 11 target predicates. The hard mixed stream stresses target evidence and shifts answer availability from mostly known clean answers to a mixture of known, unknown, uncertain, conflicting, and not-applicable answers.}
+\label{fig:artifact-profile}
+\end{figure*}
 
-\subsection{Baselines}
+\subsection{Artifact Characterization}
 
-We compare against the following baselines:
-\begin{itemize}
-    \item \textbf{Vector memory}: retrieves observations by text or feature similarity.
-    \item \textbf{Static scene graph}: keeps only the latest active relation.
-    \item \textbf{Latest-wins temporal memory}: maintains history but accepts the latest observation as truth.
-    \item \textbf{No-confidence}: maintains temporal facts but ignores confidence fusion.
-    \item \textbf{No-bitemporal}: uses a single timestamp rather than valid and transaction time.
-    \item \textbf{No-index}: scans all facts for each query.
-\end{itemize}
+The reported artifact supports the first EAB claim: \bench\ is a concrete, validated benchmark package rather than only a proposal. Fig.~\ref{fig:artifact-profile} summarizes the released workload. The artifact contains 570 simulator-grounded episodes, 36 activities, four task-state families, 11 target predicates, 5,848 hard queries, 2.86M clean observations, and 2.80M hard mixed observations. The query set covers point state checks, bitemporal as-of probes, provenance queries, full-episode diffs, uncertainty sets, preconditions, failure localization, and task-goal checks. The target predicates cover object unary state, material state, containment, and contact configuration. This diversity is important because a benchmark limited to one predicate family would be easy to overfit with a specialized rule.
 
-\subsection{Metrics}
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/figB_query_difficulty_matrix.pdf}
+\caption{Hard-split mechanism and query difficulty profile. The hard stream keeps only a minority of target simulator-state observations as direct evidence, while downgrading or dropping the rest. The resulting workload emphasizes temporal and provenance queries and produces graded known, unknown, uncertain, and conflicting answer conditions across target predicates.}
+\label{fig:hard-profile}
+\end{figure*}
 
-Database-level metrics include current-state accuracy, as-of accuracy, change detection F1, provenance precision and recall, stale fact rate, query latency, update throughput, and memory footprint. Task-level metrics include object-search success, wrong-location visits, search steps, restoration accuracy, and unnecessary moves.
+\subsection{Hard-Split Difficulty}
 
-\subsection{Preliminary Experiment Plan}
+Fig.~\ref{fig:hard-profile} explains why the hard split is more than a larger file. Among 14,905 target simulator-state observations, only 2,512 remain as direct target evidence, 10,282 are downgraded to lower-confidence evidence, and 2,111 are dropped. The overall stream also contains 87,571 dropped observations, 144,011 low-confidence observations, and 27,883 injected conflicts. This perturbation is target-aware: it stresses evidence near the states that queries ask about, while leaving most background observations intact.
 
-The first prototype will produce the following figures and tables:
-\begin{itemize}
-    \item accuracy versus observation noise rate;
-    \item as-of accuracy versus delayed-observation rate;
-    \item query latency versus number of memory facts;
-    \item ablation table for bitemporal time, confidence, provenance, and indexing;
-    \item task-level results for temporal object search and previous-state restoration.
-\end{itemize}
+The hard split is therefore a controlled stress test for data-management behavior. It is not an empirical model of every real sensor failure. Its purpose is to create missing, low-confidence, delayed, and conflicting evidence regimes in which systems must decide whether a state is known, unknown, uncertain, or conflicting. The confidence and predicate panels in Fig.~\ref{fig:hard-profile} show that the resulting workload is not binary. Different predicates exhibit different answer mixtures, and temporal/provenance queries include high-confidence, low-confidence, missing, and conflicting cases.
 
-\textbf{TODO:} Replace this paragraph with quantitative results after the benchmark scripts finish running.
+\subsection{Long State Chains}
+
+Most episodes in the reported artifact are short controlled transitions, but the release also includes a 30-episode long state-chain subset over cooking and freezing activities. The cooking chains move from an actuator state to temperature and maximum-temperature changes, and then to hot and cooked states. The freezing chain moves from opening the refrigerator to temperature change and then to frozen state. This subset is not large enough to claim broad long-horizon BEHAVIOR coverage, but it demonstrates that the benchmark can express multi-stage temporal state maintenance beyond a single target flip.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/figD_baseline_main_results.pdf}
+\caption{Baseline results on the final hard split. The upper heatmap reports query-type exact accuracy, the lower-left panel reports structured answer metrics, and the lower-right panel reports p95 per-query runtime from prediction outputs. All methods cover the full 5,848-query workload.}
+\label{fig:baseline-results}
+\end{figure*}
+
+\subsection{Baseline Results}
+
+Fig.~\ref{fig:baseline-results} compares three reference baselines on the final hard split. Recall memory answers from retrieved or recent evidence without maintaining a temporal state view. Temporal log keeps an explicit event log and evaluates temporal queries over it. \engine\ maintains a bitemporal task-state view with support and contradict evidence.
+
+The overall exact accuracies are 25.2\% for Recall memory, 69.0\% for Temporal log, and 75.6\% for \engine. These results support the benchmark's diagnostic goal: the workload separates retrieval-style memory, append-only temporal lookup, and materialized temporal-state views. The largest gap is between retrieval-style memory and the two temporal baselines; the additional gain from Temporal log to \engine\ is smaller and concentrates in structured and task-derived workloads. Temporal log and \engine\ reach 98\% exact accuracy on \texttt{AS\_OF\_STATE} and \texttt{WHY\_STATE}, but they still struggle on structured workloads. \engine\ reaches only 39\% exact accuracy on \texttt{STATE\_DIFF} and 10\% on \texttt{FIND\_UNCERTAIN\_STATES}, although its partial structured metrics are higher: 42.4\% Diff F1, 63.8\% Goal F1, 72.6\% State-set F1, and 92.5\% Why-support F1.
+
+The runtime panel reports per-query prediction time, not full end-to-end indexing or stream-loading time. It shows a different stress point: most point-state queries are inexpensive after indexing, while \texttt{FIND\_UNCERTAIN\_STATES} dominates p95 query time for all methods. This is useful benchmark information because it separates semantic difficulty from query-time pressure.
+
+\subsection{Failure and Difficulty Diagnostics}
+
+The baseline diagnostics separate two different messages. First, answer status matters. Recall memory fails especially on unknown, uncertain, and conflict answers, while Temporal log and \engine\ recover most unknown and uncertain statuses. Second, the high predicate-level accuracy for Temporal log and \engine\ on \texttt{AS\_OF\_STATE} and \texttt{WHY\_STATE} should not be overstated. It means that explicit event-time and transaction-time maintenance is effective for these two query families. It does not mean that all of \bench\ is easy, because the residual errors in Fig.~\ref{fig:baseline-results} concentrate in set-valued uncertainty, state diffs, preconditions, failure localization, and goal views.
+
+The interpretation should avoid two common mistakes. It should not treat \engine\ as the oracle merely because it is the reference engine. It should also not claim that a lower score means a method is bad for all embodied AI tasks. A retrieval memory that performs poorly on state diffs may still be useful for open-ended question answering. The EAB claim is narrower and more useful: \bench\ identifies which systems are good at temporal task-state view maintenance under a shared, reproducible workload.
+
+\section{Lessons, Limitations, and Artifact Availability}
+\label{sec:discussion}
+
+\subsection{Lessons from the Benchmark Design}
+
+The first lesson is that latest-state memory is not a sufficient abstraction for embodied task state. Late evidence can revise the answer to an as-of query, and contradictory evidence can make the correct answer uncertain or conflicting rather than simply true or false.
+
+The second lesson is that retrieval and view maintenance answer different questions. Retrieval can surface relevant evidence, but a task executor often needs a maintained predicate value, a change set, or a goal-satisfaction view. \bench\ therefore evaluates QueryAnswers, not retrieved frames alone.
+
+The third lesson is that provenance should be part of the benchmark design even when the first main release emphasizes core state answers. Support and contradict evidence are needed for why queries, failure localization, and trust calibration. They also help diagnose whether a system was correct for the right reason.
+
+The fourth lesson is that goal views are more than a convenience layer. A system may answer individual predicate checks correctly but still fail to aggregate them into a task-level answer if it mishandles unknown or conflicting predicates. Conversely, a goal-level score can hide which predicate failed. \bench\ therefore reports both goal satisfaction and goal-predicate F1.
+
+The fifth lesson is that benchmark artifacts need validation reports as first-class objects. Without public validation, a user cannot tell whether a failure comes from their system, from malformed query metadata, from leaked answer fields, or from inconsistent task specifications. The reported release treats validation status, stream counts, and query counts as part of the benchmark profile.
+
+\subsection{Limitations}
+
+\bench\ makes a controlled isolation choice. The main artifact is simulator-grounded and structured; it does not claim to solve raw perception or low-level robot control. This is a limitation, but also a design requirement for a reproducible data-management benchmark. If perception and control are folded into the main score too early, failures become hard to attribute.
+
+The reported public release focuses on structured simulator-grounded observations. It includes provenance, precondition, uncertain-state, and failure-localization queries, but raw perception-derived streams are not used as the main correctness source. This keeps the evaluation reproducible, but it limits claims about real sensor distributions.
+
+Finally, the reported baseline set is intentionally conservative. It emphasizes transparent systems whose failure modes can be analyzed under the benchmark. Neural memory, LLM-based agents, and full embodied pipelines are outside this baseline set; they fit the benchmark only when their public inputs, inference budgets, and output schemas can be made comparable.
+
+\subsection{Artifact Availability}
+
+The benchmark release provides public task specifications, public observation streams, query sets, manifests, validation reports, build commands, baseline implementations, prediction schemas, and evaluator scripts. Hidden timelines and answer sets are used for evaluation. Artifact hosting must avoid reviewer tracking and follow the ICDE submission instructions.
+
+The release provides a minimal reproduction path: build or validate public artifacts, run each baseline on the hard mixed stream, validate prediction schema, evaluate predictions, and regenerate the reported tables and figures. For EAB review, this path is as important as the dataset itself because it shows that the benchmark is executable rather than only descriptive.
 
 \section{Related Work}
+\label{sec:related}
 
-\subsection{Embodied Question Answering and Embodied Memory}
-OpenEQA evaluates open-vocabulary embodied question answering under episodic memory and active exploration settings~\cite{openeqa}. It is a benchmark rather than a memory database. \sys can be used as a memory backend for embodied QA agents by providing structured and provenance-aware memory contexts.
+\subsection{Embodied Task and Simulation Benchmarks}
 
-\subsection{3D and Dynamic Scene Memories}
-3D-Mem stores compact 3D scene memories for embodied exploration and reasoning~\cite{yang20253dmem}. DynaMem maintains dynamic spatio-semantic memory for open-world mobile manipulation~\cite{yu2024dynamem}. These systems show that dynamic memory is useful for embodied agents, but their main focus is agent performance and spatial memory, not database-level temporal, uncertainty, provenance, and hybrid query semantics.
+BEHAVIOR introduced a benchmark of everyday household activities with predicate-logic activity specifications and simulation-based evaluation~\cite{srivastava2022behavior}. BEHAVIOR-1K scales this line of work to 1,000 activities and introduces OmniGibson as a simulation environment for realistic physics and rendering~\cite{li2024behavior1k}. Habitat and Habitat 2.0 support embodied navigation and rearrangement evaluation~\cite{savva2019habitat,szot2021habitat}; AI2-THOR provides an interactive 3D environment for visual AI~\cite{kolve2017ai2thor}; VirtualHome represents household activities as executable programs~\cite{puig2018virtualhome}; and TEACh studies embodied agents that interact through dialogue~\cite{padmakumar2022teach}. \bench\ uses the same general idea that task specifications and simulator truth can ground evaluation, but it changes the target from embodied task success to temporal task-state view maintenance.
 
-\subsection{Structured Agent Memory}
-GraphPad uses mutable scene graphs, navigation logs, and scratchpads as structured inference-time memory for embodied agents~\cite{graphpad}. In contrast, \sys is a persistent lifelong memory backend with bitemporal facts, confidence, provenance, and database query interfaces.
+ALFRED evaluates instruction following for household tasks~\cite{shridhar2020alfred}. OpenEQA evaluates embodied question answering over episodic memory and active exploration~\cite{majumdar2024openeqa}. These benchmarks ask whether an agent can act or answer language questions. \bench\ asks whether a system can maintain and query a temporal state view from imperfect evidence.
 
-\subsection{Long-Horizon Vision-Language Navigation}
-Long-horizon VLN work such as MGDM uses short-term observation memories and long-term retrieval from navigation datasets to guide multi-stage navigation~\cite{song2025lhvln}. This memory is model-internal and action-oriented. \sys instead stores the agent's own dynamic world state as a queryable database.
+Work on embodied memories and scene representations is complementary. Such systems often store observations, scene graphs, maps, or retrieved context for downstream decisions. \bench\ can evaluate those systems if they can produce QueryAnswers from public streams, but it does not require a particular memory architecture. This representation-agnostic design is important because a benchmark should compare methods without prescribing their internal storage model.
 
-\subsection{Temporal, Probabilistic, Provenance, and Graph Databases}
-\sys builds on ideas from temporal databases, probabilistic data management, graph data management, provenance, spatial data, and vector retrieval. The contribution is not to reinvent these individual database concepts, but to combine them into a system model for noisy, dynamic, and task-facing embodied memory.
+\subsection{Temporal, Stream, and Provenance Data Management}
+
+Temporal databases separate the time when a fact is valid in the modeled world from the time when a database records or knows the fact~\cite{snodgrass1999developing,jensen1999temporal}. Stream systems study continuous processing over arriving data~\cite{babcock2002models,garofalakis2016data}. Incremental view maintenance and materialized-view maintenance study how derived database state can be updated after base changes~\cite{gupta1995maintenance,zhuge1995view}. Provenance models record how query results are derived from input data~\cite{green2007provenance,cheney2009provenance}. Uncertain and probabilistic data management studies query answering when input facts are noisy or probabilistic~\cite{aggarwal2009uncertain,dalvi2007efficient}. \bench\ brings these ideas into embodied task-state maintenance, where event-time and arrival-time mismatch, missing observations, conflicting evidence, and task-derived goal views appear together.
+
+The benchmark also connects to incremental view maintenance and uncertain data. The maintained \tsv\ can be seen as a materialized view over an observation log, but its updates include late-arrival repair, contradict evidence, confidence changes, and task-derived aggregation. \bench\ does not propose a single optimal view-maintenance algorithm. Instead, it defines the workload that competing algorithms must satisfy.
+
+\subsection{Experiment, Analysis, and Benchmark Papers}
+
+Database benchmark papers often contribute workload models, artifact rules, and diagnostic analyses rather than only a new algorithm. LDBC benchmarks standardize graph workloads and reporting rules for social-network and graph-analytics settings~\cite{erling2015ldbc,iosup2016ldbc}; TSM-Bench benchmarks time-series database systems for monitoring applications~\cite{khelifati2023tsmbench}; and FinBench defines a financial graph transaction workload~\cite{qi2025finbench}. Recent EAB papers similarly contribute unified evaluation frameworks and analysis of method trade-offs: SQLMorph mutates text-to-SQL workloads and introduces fine-grained metrics~\cite{malekpour2026sqlmorph}; BEACON provides a benchmark framework for subgraph counting~\cite{najafi2025beacon}; and plan-based AQP analysis decomposes system mechanisms to explain performance differences~\cite{mu2025aqp}. \bench\ follows this EAB pattern: the contribution is the benchmark artifact, workload, evaluator, and analysis of where baseline strategies succeed or fail.
+
+This EAB framing also guides the paper structure. The paper spends substantial space on artifact design, query semantics, metrics, validation, and interpretation of failures. A thin benchmark description followed by a large system evaluation would misrepresent the contribution; the benchmark itself is the main object.
 
 \section{Conclusion}
 
-This paper introduces \sys, a probabilistic bitemporal scene-graph store for embodied agents. \sys treats long-term embodied memory as a data engineering problem: noisy observations are converted into queryable world facts with time, confidence, and provenance. The system supports current, as-of, change, evidence, and task-oriented queries, and uses lightweight hybrid indexes for efficient execution. The planned evaluation studies whether these database-level memory semantics improve robustness, query efficiency, and downstream embodied task performance.
+\bench\ is a data-management benchmark for temporal task-state view maintenance over embodied observation streams. It separates public observation streams and queries from hidden timelines and answers, evaluates systems through standardized QueryAnswers, and makes event time, arrival time, evidence, perturbations, and task-derived state views first-class benchmark concerns. \engine\ provides a reference baseline engine, but the benchmark oracle comes from simulator truth and task specifications. The reported artifact and experiments show that temporal maintenance strategies outperform retrieval-style memory on this workload, while structured, set-valued, and task-derived queries remain open stress points for submitted systems.
+
+\section*{AI-Generated Content Acknowledgement}
+
+The authors used AI-assisted tools during manuscript drafting, code editing, experiment-log summarization, and figure-preparation support. The authors reviewed, edited, and verified the submitted content and remain responsible for the correctness, originality, and integrity of the paper.
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}
